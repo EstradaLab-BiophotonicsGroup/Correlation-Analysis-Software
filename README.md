@@ -1,6 +1,6 @@
 Folders content description
 
-code/ Contains custom Python scripts for correlation data analysis.
+code_date/ Contains custom Python scripts for correlation data analysis updated on the date of the file.
 Authored by Natalia Philipp with contributions from Laura Estrada.
 
 exe/ Contains the executable file for performing correlation data analysis.
