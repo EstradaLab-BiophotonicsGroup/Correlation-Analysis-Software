@@ -5,6 +5,6 @@ Authored by Natalia Philipp with contributions from Laura Estrada.
 
 exe/ Contains the executable file for performing correlation data analysis.
 
-tutorial/ Provides a detailed description of the functions and parameters used in the analysis.
+wiki/ Tutorial: provides a detailed description of the functions and parameters used in the analysis.
 
 tutorial-data/ Includes the simulation files used for the tutorial.
