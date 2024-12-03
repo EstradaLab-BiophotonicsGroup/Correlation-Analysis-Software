@@ -5,7 +5,7 @@
 
 """
 
-codepath = r'C:\Users\Usuario\Nextcloud\Doctorado\Códigos varios'
+codepath = r'your path'
 
 import sys
 sys.path.append(codepath)
@@ -1727,7 +1727,7 @@ def on_cmap_change(event):
 root = tk.Tk()
 
 # Load an image file (e.g., .jpg or .bmp) using Pillow and convert to PhotoImage
-image = Image.open(codepath+r'\interfaz\icono.png')  # or .bmp
+image = Image.open(codepath+r'\icono.png')  # or .bmp
 photo = ImageTk.PhotoImage(image)
 
 # Set the window icon
