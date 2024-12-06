@@ -1,6 +1,6 @@
 Folders content description
 
-code_date/ Contains custom Python scripts for correlation data analysis updated on the date of the file.
+code_date/ Contains custom Python scripts for correlation data analysis updated on the date of the file. You should download this file + the additional file + the png's. If you put all of them in the same folder, you just need to set the correct path as the first line in the code and execute it. It should open the interface.
 Authored by Natalia Philipp with contributions from Laura Estrada.
 
 exe/ You can download the correlation analysis program from here: https://drive.google.com/file/d/11DT7dmQ0wMAxKSSu3S5jrDbLCF0B5Bnb/view?usp=sharing
