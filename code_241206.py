@@ -59,6 +59,8 @@ G_to_save = None
 T_to_save = None
 dwell_time = None
 pixels = None
+original_limits = {}  # This will store original limits for each axis.
+
 
 
 def my_colors():
@@ -116,7 +118,7 @@ def extract_metadata(file_path, callback):
         # Find the PixelDwellTime or LineTime
         dwell_time_elem = root.find('.//LineTime')
         if dwell_time_elem is not None:
-            dwell_time = np.round(float(dwell_time_elem.text),4)
+            dwell_time = np.round(float(dwell_time_elem.text),6)
         else:
             dwell_time = None  # Handle case where LineTime is not found
 
@@ -325,49 +327,40 @@ def display_kimograms(kimograms):
 
 
 
-
 # Toggle between kimograms
 def toggle_kimogram():
     '''
     This function is only relevant if there are two kimograms.
     It is used to change over which kimogram the buttons such as zoom or h-lines will be used.
-
-    Returns
-    -------
-    None.
     '''
     global current_index
-    if current_index==0:
+    if current_index == 0:
         current_index = 1
     else:
         current_index = 0
     set_current_axis(current_index)
     update_kimogram_label()  # Update the label text
-
     canvas.draw()
-
-#███████  ██████   ██████  ███    ███ 
-#   ███  ██    ██ ██    ██ ████  ████ 
-#  ███   ██    ██ ██    ██ ██ ████ ██ 
-# ███    ██    ██ ██    ██ ██  ██  ██ 
-#███████  ██████   ██████  ██      ██ 
-                           
 
 def zoom_in():
     '''
-    this function is apply the kimograms to make a zoom in in the plotted lines.
-
-    Returns
-    -------
-    None.
-
+    This function applies zoom in over the kimogram.
     '''
-    global rect_selector, current_ax
+    global rect_selector, current_index, original_limits
+    set_current_axis(current_index)
     if current_ax is None:
         show_message('Error','No kimogram has been selected. Try with the Toggle kimogram button')
         return
+    
+    # Save the original limits for the current axis before zooming
+    original_limits[current_index] = {
+        'xlim': current_ax.get_xlim(),
+        'ylim': current_ax.get_ylim()
+    }
+    
     if rect_selector:
         rect_selector.set_active(False)
+
     def onselect(eclick, erelease):
         x1, y1 = int(eclick.xdata), int(eclick.ydata)
         x2, y2 = int(erelease.xdata), int(erelease.ydata)
@@ -375,6 +368,7 @@ def zoom_in():
         current_ax.set_ylim(min(y1, y2), max(y1, y2))
         canvas.draw()
         rect_selector.set_active(False)
+    
     rect_selector = RectangleSelector(
         current_ax, onselect,
         drawtype='box',
@@ -388,37 +382,25 @@ def zoom_in():
 
 def zoom_out():
     '''
-    zoom out over the  selected kimogram. It is meant to be used after the zoom in one. If not it will do nothing.
-
-    Returns
-    -------
-    None.
+    Zoom out over the selected kimogram.
     '''
     global current_ax, original_limits
     if current_ax is None:
-        show_message('Error','No kimogram has been selected. Try with the Toggle kimogram button')
+        show_message('Error', 'No kimogram has been selected. Try with the Toggle kimogram button')
         return
-    ax_index = fig.axes.index(current_ax)
-    original_xlim, original_ylim = original_limits[ax_index]
-    current_ax.set_xlim(original_xlim)
-    current_ax.set_ylim(original_ylim)
-    canvas.draw()
 
+    # Check if we have stored the original limits for the current kimogram
+    if current_index in original_limits:
+        original_xlim, original_ylim = original_limits[current_index]['xlim'], original_limits[current_index]['ylim']
+        current_ax.set_xlim(original_xlim)
+        current_ax.set_ylim(original_ylim)
+        canvas.draw()
+    else:
+        show_message('Error', 'Original limits are not available for this kimogram.')
 
-        
 def set_current_axis(index):
     '''
-    this function is used to select over which kimogram the action will be done.
-
-    Parameters
-    ----------
-    index : TYPE int
-        DESCRIPTION. either 0 or 1 corresponding to ch1 and ch2.
-
-    Returns
-    -------
-    None.
-
+    This function is used to select over which kimogram the action will be done.
     '''
     global current_ax
     if 0 <= index < len(fig.axes):
@@ -426,7 +408,6 @@ def set_current_axis(index):
         print(f"Current axis set to: Kimogram {index + 1}")
     else:
         print("Invalid axis index")
-
 
 
 def on_axis_select(index):
@@ -741,7 +722,10 @@ def apply_ccpCF():
     # Get the parameters from the table and apply the pCF function
     data = get_table_data()
     #data = get_values()
-    first_line = int(data.get("First Line", ""))
+    try:
+        first_line = int(data.get("First Line", ""))
+    except:
+        show_message('Error', "You need to especify the parameters in the table below")
     last_line = int(data.get("Last Line", ""))
     line_time = data.get("Line Time (ms)", "")
     print(data)
@@ -854,7 +838,11 @@ def apply_pCF():
     # Get the parameters from the table and apply the pCF function
     data = get_table_data()
     #data = get_values()
-    first_line = int(data.get("First Line", ""))
+    try:
+        first_line = int(data.get("First Line", ""))
+    except:
+        show_message('Error', "You need to especify the parameters in the table below")
+    last_line = int(data.get("Last Line", ""))
     last_line = int(data.get("Last Line", ""))
     line_time = data.get("Line Time (ms)", "")
     print(data)
@@ -1099,7 +1087,7 @@ def save_time():
                                                    filetypes=[("txt files", "*.txt"), ("All files", "*.*")])
         if file_path:
             np.savetxt(file_path, T_to_save)
-            show_message('Good', f"Correlation time saved to {file_path}")
+            show_message('Done!', f"Correlation time saved to {file_path}")
     else:
          show_message('Error',"No data to save")
             
@@ -1430,8 +1418,12 @@ def apply_filter_ccpcf(cross):
             if p is None or not isinstance(p, np.ndarray):
                 raise ValueError("Invalid output from find_p function.")
             data = get_table_data()
-            first_line = int(data.get("First Line", 0))  # Default to 0 if not found
-            last_line = int(data.get("Last Line", 0))    # Default to 0 if not found
+            try:
+                first_line = int(data.get("First Line", ""))
+                last_line = int(data.get("Last Line", ""))
+            except:
+                show_message('Error', "You need to especify the parameters in the table below")
+                pass
             line_time = float(data.get("Line Time (ms)", 0.0))  # Default to 0.0
             dr = int(data.get("Distance (px)", 0))      # Default to 0 if not found
             sigma = [int(data.get("H Smoothing (px)", 0)), int(data.get("V Smoothing (lines)", 0))]  # Default to 0 if not found
@@ -1727,7 +1719,7 @@ def on_cmap_change(event):
 root = tk.Tk()
 
 # Load an image file (e.g., .jpg or .bmp) using Pillow and convert to PhotoImage
-image = Image.open(codepath+r'\icono.png')  # or .bmp
+image = Image.open(codepath+r'\interfaz\icono.png')  # or .bmp
 photo = ImageTk.PhotoImage(image)
 
 # Set the window icon
