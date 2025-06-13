@@ -1,0 +1,28 @@
+********************************************************************************
+Correlation expt  :C:\Users\Usuario\Nextcloud\Doctorado\Simulaciones\for interface\simulation2channels4_control2_   DATE:11/21/2024   TIME:10:39:22 AM
+Extension         :000
+Card type         :4 Sampling freq     :400000.00000 Time/photon mode  :0
+Maximum cycles    :       500
+Scanning period   :      1000  Scanning radius   :       2.0  Number or r-periods=         4 Cycles per particle=      10
+Voltage full scale:    1000.0  DC threshold=:     0.100  Z_radius=  4.0
+Scanner t-constant:0
+*********************Parameters for tracking *************************************
+Radius:2.00  Dwell time:16 us Period:4000 Rperiods:4 Z-radius:4 Z-Period:1
+Points per orbit:128 Samplimg frequency:16000 R harmonics:8 R%:0 Mod for auto R:1.667
+Dark 1:0 Dark 2:0 Movement type:0 Mode:1 DC threshold:dc threshold
+Channel for tracking:1 Up down flag:0
+Label108:Center:   0    0, start:  44 stop: 135 
+ Edge tracking flag:0 speed:4 Sensitivity:4
+***************************Simulation parameters ******************* 
+option            :13
+Box size           :        64
+Radial waist y     :     0.500 Radial waist x     :     0.250
+Axial  waist       :     2.500
+PSF shape          :1
+Number of molecules (<=4000):  25
+Switching time     :    0
+Length of stick    :  5.0
+Scanning           :True
+Scan mode          :3
+Mask mode          :False
+* COMMENTS *
