@@ -16,6 +16,7 @@ from matplotlib import ticker #as mticker
 import matplotlib.colors as colors
 from czifile import imread
 import threading
+import pandas as pd
 from matplotlib.colors import LinearSegmentedColormap
 from tkinter import simpledialog
 from lfdfiles import SimfcsB64 as lfd
@@ -614,7 +615,7 @@ def load_correlation(cmap_var):
             G_to_save.append(np.loadtxt(file_path, delimiter=','))
     elif all(file_path.endswith('.csv') for file_path in file_paths):
         for file_path in file_paths:
-            G_to_save.append(pd.read_csv(file_path).to_numpy)
+            G_to_save.append(pd.read_csv(file_path).to_numpy())
             
     else:
          show_message('Error',"I couldn't understand the shape of your files. Sorry")
@@ -898,7 +899,7 @@ def plot_on_ax(ax, G_log, t_log,title,cmap):
 
     '''
     vmin = 0
-    vmax = np.max(G_log)
+    vmax = np.percentile(G_log, 90)
     y = np.arange(G_log.shape[0])
     im = ax.pcolor(y.transpose(), t_log, G_log.transpose(), shading="nearest",
                cmap=cmap, vmin=vmin, vmax=vmax)
@@ -1061,7 +1062,7 @@ def plot_kimograms(kimograms,cmap_var,factor=1):
         return [0, kimogram.shape[1], kimogram.shape[0], 0]  # [x_min, x_max, y_min, y_max]
 
     num_kimograms = len(kimograms)
-
+    font = 16
     if num_kimograms > 1:
         fig, axs = plt.subplots(1, num_kimograms, figsize=(8 * num_kimograms, 20), squeeze=False)
         axs = axs.flatten()
@@ -1070,15 +1071,18 @@ def plot_kimograms(kimograms,cmap_var,factor=1):
             vmin = np.min(kimogram)
             vmax = np.mean(kimogram) + 2 * np.std(kimogram)
             extent = get_extent(kimogram)
+            
             cax = ax.imshow(kimogram, aspect='auto', cmap=my_colors(cmap_var), norm=plt.Normalize(vmin=vmin, vmax=vmax),
         origin='upper', extent=[0, kimogram.shape[1], kimogram.shape[0], 0])
-            ax.set_xlabel("Pixel")
+            ax.set_xlabel("Pixel", fontsize=font-2)
             ticks = np.linspace(0,len(kimogram),5, dtype=int)
-            ax.set_yticks(ticks,labels=[int(ticks[i]*factor/10000)*10000 for i in range(len(ticks))])
-            ax.set_ylabel("Line Number")
-            ax.set_title(f"Kimogram {axs.tolist().index(ax) + 1}")
-            plt.colorbar(cax, ax=ax, label='Intensity')
-            plt.subplots_adjust(wspace=0.5)
+            ax.set_yticks(ticks,labels=[int(ticks[i]*factor/10000)*10000 for i in range(len(ticks))], fontsize=font-2)
+            ax.set_ylabel("Line Number", fontsize=font)
+            ax.set_title(f"Kimogram {axs.tolist().index(ax) + 1}", fontsize=font-2)
+            cbar = plt.colorbar(cax, ax=ax)
+            cbar.set_label('Intensity', fontsize=font)
+            cbar.ax.tick_params(labelsize=font-2)
+            plt.subplots_adjust(wspace=0.6)
 
     else:
         kimograma = kimograms[0]
@@ -1385,7 +1389,8 @@ def line_crosspCF_analysis(Kimogram, Kimogram2, C0, C1, linetime, reverse_PCF,
     return np.array(G), np.array(Tau)
 
 
-def crosspCF(Kimogram, Kimogram2, linetime, dr=0, reverse_PCF=False, return_time=0, logtime=False, Movil_log=0):
+def crosspCF(Kimogram, Kimogram2, linetime, dr=0, reverse_PCF=False, return_time=0, 
+             logtime=False, Movil_log=0):
     '''
     Parameters
     ----------
@@ -1420,11 +1425,6 @@ def crosspCF(Kimogram, Kimogram2, linetime, dr=0, reverse_PCF=False, return_time
           -) Rows are the delay time
     '''
     
-        
-    # if Movil_log==0:
-        # print('MAV = 0')
-    # else:
-        # print('MAV = %s' % (Movil_log))
     Size = len(Kimogram[0]) #cantidad de píxeles en una linea
     print(f"Starting crosspCF with Size: {Size}, dr: {dr}, line time: {linetime}")  # Debug print
 
@@ -1456,9 +1456,7 @@ def apply_ccpCF():
         show_message('Error',"No kimograms data to process.")
         pass
     
-    # Get the parameters from the table and apply the pCF function
     data = get_table_data()
-    #data = get_values()
     try:
         first_line = int(data.get("First Line", ""))
     except:
@@ -1476,6 +1474,7 @@ def apply_ccpCF():
     G, T = crosspCF(original_kimograms[0][first_line:last_line], original_kimograms[1][first_line:last_line], linetime=line_time/1000, dr=dr, reverse_PCF=reverse)
     G2, T2 = crosspCF(original_kimograms[1][first_line:last_line], original_kimograms[0][first_line:last_line], linetime=line_time/1000, dr=dr, reverse_PCF=reverse)
     x1 = np.geomspace(1, len(G), 256, dtype=int, endpoint = False)    
+    #x1 = np.unique(np.geomspace(1, len(G)-1, 256).astype(int))
     t_lineal = T[:,0]
     t_log = np.geomspace(t_lineal[0], t_lineal[-1], 256, endpoint=True)
     G_basura = []
@@ -1495,6 +1494,7 @@ def apply_ccpCF():
     if acfnorm:
         print('Normalizing correlation by ACF...')
         A, _ = pCF(original_kimograms[0][first_line:last_line], line_time/1000, dr=0,reverse_PCF=reverse)
+        #x1 = np.unique(np.geomspace(1, len(G)-1, 256).astype(int))
         x1 = np.geomspace(1, len(A), 256, dtype=int, endpoint = False)    
         A_basura = []
         for i in x1:
@@ -1512,6 +1512,7 @@ def apply_ccpCF():
                 G_to_save[i]=2
                 
         G_to_save = np.reshape(G_to_save, np.shape(G_log))
+    #x1 = np.unique(np.geomspace(1, len(G)-1, 256).astype(int))
     x1 = np.geomspace(1, len(G2), 256, dtype=int, endpoint = False)    
     G2_basura = [list(G2[i]) for i in x1]
     G2 = np.asarray(G2_basura).transpose()
@@ -1525,6 +1526,7 @@ def apply_ccpCF():
         print('Normalizing correlation by ACF...')
         A, _ = pCF(original_kimograms[1][first_line:last_line], line_time/1000, dr=0,reverse_PCF=reverse)
         x1 = np.geomspace(1, len(A), 256, dtype=int, endpoint = False)    
+        #x1 = np.unique(np.geomspace(1, len(G)-1, 256).astype(int))
         A_basura = []
         for i in x1:
             A_basura.append(list(A[i]))
@@ -1628,10 +1630,10 @@ def apply_pCF():
         for i, gi in enumerate(A1_downsampled):
             A1_log[i] = np.interp(t_log_ch1, t_lineal_ch1_resampled, gi)
         A1_log = gaussian_filter(A1_log, sigma=sigma)
-        A1_max = np.max(A1_log, axis=1)
-        G1_log = np.clip(np.reshape([
-            G1_log[i, j] / A1_max[i] for i in range(G1_log.shape[0]) for j in range(G1_log.shape[1])
-        ], G1_log.shape), None, 2)
+        A1_max = np.maximum(np.max(A1_log, axis=1), 1e-6)
+        G1_log = G1_log / A1_max[:len(G1_log), None]
+        G1_log = np.clip(G1_log, None, 2)
+
         G_to_save = G1_log
 
     # ---- CHANNEL 2 ----
@@ -1659,10 +1661,9 @@ def apply_pCF():
             for i, gi in enumerate(A2_downsampled):
                 A2_log[i] = np.interp(t_log_ch2, t_lineal_ch2_resampled, gi)
             A2_log = gaussian_filter(A2_log, sigma=sigma)
-            A2_max = np.max(A2_log, axis=1)
-            G2_log = np.clip(np.reshape([
-                G2_log[i, j] / A2_max[i] for i in range(G2_log.shape[0]) for j in range(G2_log.shape[1])
-            ], G2_log.shape), None, 2)
+            A2_max = np.maximum(np.max(A2_log, axis=1), 1e-6)
+            G2_log = G2_log / A2_max[:len(G2_log), None]
+            G2_log = np.clip(G2_log, None, 2)
             G2_to_save = G2_log
 
         # --- PLOT BOTH CHANNELS ---
@@ -2277,8 +2278,8 @@ def ask_pot_ctrl():
     for j, lab in enumerate(labels):
         tk.Label(pot_win, text=lab).grid(row=1, column=j+1)
 
-    tk.Label(pot_win, text="EGFP").grid(row=2, column=0, padx=5)
-    tk.Label(pot_win, text="mCherry").grid(row=3, column=0, padx=5)
+    tk.Label(pot_win, text="prot 1").grid(row=2, column=0, padx=5)
+    tk.Label(pot_win, text="prot 2").grid(row=3, column=0, padx=5)
 
     entries = [[None, None], [None, None]]
 
@@ -2666,49 +2667,37 @@ def find_p(f1, f2, pot_correction=[[1, 1], [1, 1]]):
     raise ValueError("Input arrays do not have the expected shape.")
 
 
+def bleeding_filter(kimograms, first_line, last_line, p):
+    """
+    Apply spectral bleeding correction using matrix inversion.
+    Vectorized version of the original implementation.
+    """
 
-
-def bleeding_filter(kimograms,first_line, last_line,p):
-    '''
-    this function takes the files provided with the chosen parameters and the p calculated to actually filter the data.
-
-    Parameters
-    ----------
-    kimograms : TYPE list of matrices each one corresponding to the data uploaded
-        
-    first_line : TYPE int
-        DESCRIPTION. first line to analyse
-    last_line : TYPE int
-        DESCRIPTION.last line to analyse
-    p : TYPE (2x2) matrix
-        DESCRIPTION.filtering matrix
-
-    Returns
-    -------
-    ch1_filtrado : TYPE matrix
-        DESCRIPTION. the data provided by the first kimogram but filtered
-    ch2_filtrado : TYPE matrix
-        DESCRIPTION.  the data provided by the second kimogram but filtered
-
-    '''
     global pot_correction_exp
-    ch1 = kimograms[0][first_line:last_line]*pot_correction_exp[0]
-    ch2 = kimograms[1][first_line:last_line]*pot_correction_exp[1]
-    ch1_filtrado, ch2_filtrado = ch1.astype(float, copy=True), ch1.astype(float, copy=True)
-    for j in range(ch1.shape[0]):
-        for k in range(ch1.shape[1]):
-            try:
-                a = np.linalg.solve(p, [ch1[j, k], ch2[j, k]])
-                ch1_filtrado[j, k] = max(a[0], 0)
-                ch2_filtrado[j, k] = max(a[1], 0)
-            except np.linalg.LinAlgError as e:
-                print(f"Error solving for indices {j}, {k}: {e}")
-                ch1_filtrado[j, k] = 0
-                ch2_filtrado[j, k] = 0
-    print(f'ch1 filtrado shape = {np.shape(ch1_filtrado)}')
-    
-    return ch1_filtrado, ch2_filtrado
 
+    # Recorte + corrección de potencia
+    ch1 = kimograms[0][first_line:last_line] * pot_correction_exp[0]
+    ch2 = kimograms[1][first_line:last_line] * pot_correction_exp[1]
+
+    # Stack -> shape (2, N)
+    data = np.stack([ch1, ch2], axis=0).astype(float)
+
+    try:
+        p_inv = np.linalg.inv(p)
+    except np.linalg.LinAlgError as e:
+        raise ValueError("Bleeding matrix p is singular") from e
+
+
+    corrected = p_inv @ data.reshape(2, -1)
+
+
+    # Volver a forma original
+    ch1_filtrado = corrected[0].reshape(ch1.shape)
+    ch2_filtrado = corrected[1].reshape(ch2.shape)
+
+    print(f'ch1 filtrado shape = {ch1_filtrado.shape}')
+
+    return ch1_filtrado, ch2_filtrado
 
 
 def plot_two_kimograms(t_log, G_log, G2_log, cruzado=True):
@@ -2744,13 +2733,31 @@ def plot_two_kimograms(t_log, G_log, G2_log, cruzado=True):
 
 
 
-def plot_filtered_data(ch1_filtrado, ch2_filtrado, line_time, dr, sigma, reverse, cruzado=True):
+def plot_filtered_data(ch1_filtrado, ch2_filtrado, line_time, dr, sigma, reverse, first_line, last_line, cruzado=True):
     '''
     Computes the corresponding pair correlation for the filtered data.
     '''
     global G_to_save, T_to_save
     try:
         if cruzado:
+            a = original_kimograms[0][first_line:last_line].ravel()
+            b = original_kimograms[1][first_line:last_line].ravel()
+            print(a.size, b.size, np.std(a), np.std(b))
+            print(
+                    "corr raw:",
+                    np.corrcoef(
+                        original_kimograms[0][first_line:last_line].ravel(),
+                        original_kimograms[1][first_line:last_line].ravel()
+                        )[0,1]
+                    )
+
+            print(
+        "corr filtered:",
+        np.corrcoef(
+            ch1_filtrado.ravel(),
+            ch2_filtrado.ravel()
+            )[0,1]
+        )
             G, T = crosspCF(ch1_filtrado, ch2_filtrado, linetime=line_time / 1000, dr=dr, reverse_PCF=reverse)
             G2, T2 = crosspCF(ch2_filtrado, ch1_filtrado, linetime=line_time / 1000, dr=dr, reverse_PCF=reverse)
             print('LA CORRELACION ES CRUZADA')
@@ -2769,6 +2776,7 @@ def plot_filtered_data(ch1_filtrado, ch2_filtrado, line_time, dr, sigma, reverse
             return None
 
         x1 = np.geomspace(1, len(G), 256, dtype=int, endpoint=False)
+        #x1 = np.unique(np.geomspace(1, len(G)-1, 256).astype(int))
         t_lineal = T[:, 0]
         t_log = np.geomspace(t_lineal[0], t_lineal[-1], 256, endpoint=True)
 
@@ -2787,6 +2795,7 @@ def plot_filtered_data(ch1_filtrado, ch2_filtrado, line_time, dr, sigma, reverse
             G_log[i] = np.interp(t_log, t_lineal, gi)
 
         G_log = gaussian_filter(G_log, sigma=sigma)
+        #x1 = np.unique(np.geomspace(1, len(G)-1, 256).astype(int))
         x1 = np.geomspace(1, len(G2), 256, dtype=int, endpoint=False)
 
         G2_basura = []
@@ -2887,13 +2896,23 @@ def apply_filter_ccpcf(cross):
            
             
             ch1_filtrado, ch2_filtrado = bleeding_filter(original_kimograms,first_line, last_line,p)
+            print(
+                "means:",
+                np.mean(ch1_filtrado),
+                np.mean(ch2_filtrado)
+                )
+            print(
+    "stds:",
+        np.std(ch1_filtrado),
+        np.std(ch2_filtrado)
+        )
             print(p)
             if cross=='ccpcf':
                 print('Entré al if cross de apply_filter_ccpcf')
-                fig = plot_filtered_data(ch1_filtrado, ch2_filtrado, line_time, dr, sigma, reverse, cruzado=True)
+                fig = plot_filtered_data(ch1_filtrado, ch2_filtrado, line_time, dr, sigma,reverse, first_line, last_line, cruzado=True)
             else:
                 try:
-                    fig = plot_filtered_data(ch1_filtrado, ch2_filtrado, line_time, dr, sigma, reverse, cruzado=False)
+                    fig = plot_filtered_data(ch1_filtrado, ch2_filtrado, line_time, dr, sigma,reverse, first_line, last_line, cruzado=False)
                 except:
                     print('error in plot_filtered_data')
                     pass
@@ -3430,9 +3449,9 @@ def decaimiento_numba(c):
     idx = 0
     vmax = c[0]
     for i in range(1, c.shape[0]):
-        if c[i] > vmax:
-            vmax = c[i]
-            idx = i
+         if c[i] > vmax:
+             vmax = c[i]
+             idx = i
     return idx, vmax
 
 
@@ -3647,28 +3666,53 @@ def apply_2d_pcf(entries, parent_window):
 
 from matplotlib.ticker import FuncFormatter
 
+
 def open_A_profile_window(win, original_anisotropy):
+
+    import tkinter as tk
+    import numpy as np
+    from matplotlib.figure import Figure
+    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+    from skimage.measure import profile_line
+
     prof_win = tk.Toplevel(win)
-    prof_win.title("Anisotropy Profiles")
-    prof_win.geometry("600x600")
+    prof_win.title("Anisotropy Map")
+    prof_win.geometry("650x700")
 
-    fig_p, ax_p = plt.subplots(figsize=(5, 5))
-    im = ax_p.imshow(original_anisotropy, cmap='viridis', origin='upper')
-    ax_p.set_title("Click two points to extract A profile")
-    fig_p.colorbar(im, ax=ax_p, label="Anisotropy (A)")
+    # ---------- FIGURA MAPA ----------
+    fig_map = Figure(figsize=(5,5))
+    ax_map = fig_map.add_subplot(111)
 
-    canvas_p = FigureCanvasTkAgg(fig_p, master=prof_win)
-    canvas_p.get_tk_widget().pack(fill="both", expand=True)
+    im = ax_map.imshow(original_anisotropy, cmap='viridis', origin='upper')
+    ax_map.set_title("Click two points to extract A profile")
 
-    # Store clicks and artists
+    fig_map.colorbar(im, ax=ax_map, label="Anisotropy (A)")
+
+    canvas_map = FigureCanvasTkAgg(fig_map, master=prof_win)
+    canvas_map.get_tk_widget().pack(fill="both", expand=True)
+
+    coord_label = tk.Label(prof_win, text="x:-  y:-  A:-", font=("Arial",11))
+    coord_label.pack(pady=5)
+
     clicks = []
     point_artists = []
     line_artist = None
 
+    # ---------- VENTANA PERFIL ----------
+    profile_win = None
+    fig_prof = None
+    ax_prof = None
+    canvas_prof = None
+    prof_coord_label = None
+    current_profile = None
+
+
     def clear_selection():
         nonlocal line_artist
+
         for p in point_artists:
             p.remove()
+
         point_artists.clear()
 
         if line_artist is not None:
@@ -3676,59 +3720,104 @@ def open_A_profile_window(win, original_anisotropy):
             line_artist = None
 
         clicks.clear()
-        canvas_p.draw_idle()
-    prof_plot_win = None
-    fig_prof = None
-    ax_prof = None
-    canvas_prof = None
+        canvas_map.draw_idle()
 
-    def on_click(event):
-        nonlocal line_artist
-        nonlocal prof_plot_win, fig_prof, ax_prof, canvas_prof
-        if event.button != 1:
+
+    def open_profile_window():
+
+        nonlocal profile_win, fig_prof, ax_prof, canvas_prof, prof_coord_label
+
+        profile_win = tk.Toplevel(prof_win)
+        profile_win.title("Anisotropy Profile")
+
+        fig_prof = Figure(figsize=(6,4))
+        ax_prof = fig_prof.add_subplot(111)
+
+        canvas_prof = FigureCanvasTkAgg(fig_prof, master=profile_win)
+        canvas_prof.get_tk_widget().pack(fill="both", expand=True)
+
+        prof_coord_label = tk.Label(profile_win,
+                                    text="pixel:-   A:-",
+                                    font=("Arial",11))
+        prof_coord_label.pack(pady=5)
+
+        def on_click_profile(event):
+
+            if event.inaxes != ax_prof:
+                return
+
+            if event.xdata is None:
+                return
+
+            pixel = int(round(event.xdata))
+
+            if current_profile is not None and 0 <= pixel < len(current_profile):
+
+                A = current_profile[pixel]
+                prof_coord_label.config(text=f"pixel: {pixel}   A: {A:.3f}")
+
+        canvas_prof.mpl_connect("button_press_event", on_click_profile)
+
+
+    def on_click_map(event):
+
+        nonlocal line_artist, current_profile
+
+        if event.inaxes != ax_map:
             return
-        if event.inaxes != ax_p:
+
+        if event.xdata is None or event.ydata is None:
             return
-    
+
+        r = event.ydata
+        c = event.xdata
+
+        r_int = int(r)
+        c_int = int(c)
+
+        if 0 <= r_int < original_anisotropy.shape[0] and 0 <= c_int < original_anisotropy.shape[1]:
+
+            A = original_anisotropy[r_int, c_int]
+            coord_label.config(text=f"x:{c_int}  y:{r_int}  A:{A:.3f}")
+
+        else:
+            coord_label.config(text="x:-  y:-  A:-")
+
         if len(clicks) == 2:
             clear_selection()
 
-        r, c = event.ydata, event.xdata
-        clicks.append((r, c))
+        clicks.append((r,c))
 
-        p, = ax_p.plot(c, r, 'ro')
+        p, = ax_map.plot(c, r, 'ro')
         point_artists.append(p)
-        canvas_p.draw_idle()
 
+        canvas_map.draw_idle()
 
         if len(clicks) == 2:
-            (r0, c0), (r1, c1) = clicks
-            line_artist, = ax_p.plot([c0, c1], [r0, r1], 'r-')
-            canvas_p.draw_idle()
 
-            # Extract profile
-            profile = profile_line(
+            (r0,c0),(r1,c1) = clicks
+
+            line_artist, = ax_map.plot([c0,c1],[r0,r1],'r-')
+            canvas_map.draw_idle()
+
+            current_profile = profile_line(
                 original_anisotropy,
-                (r0, c0),
-                (r1, c1),
+                (r0,c0),
+                (r1,c1),
                 mode='constant',
                 cval=np.nan
-                )
+            )
 
-            if prof_plot_win is None or not prof_plot_win.winfo_exists():
-                prof_plot_win = tk.Toplevel(prof_win)
-                prof_plot_win.title("A Profile")
+            if profile_win is None or not profile_win.winfo_exists():
+                open_profile_window()
 
-                fig_prof, ax_prof = plt.subplots(figsize=(6, 4))
-                canvas_prof = FigureCanvasTkAgg(fig_prof, master=prof_plot_win)
-                canvas_prof.get_tk_widget().pack(fill="both", expand=True)
-            else:
-                ax_prof.clear()
+            ax_prof.clear()
 
-            # Plot profile
-            dist = np.arange(len(profile))
-            ax_prof.plot(dist, profile, '-k')
-            ax_prof.set_xlabel("Distance (pixels)")
+            dist = np.arange(len(current_profile))
+
+            ax_prof.plot(dist, current_profile, '-k')
+
+            ax_prof.set_xlabel("Pixel")
             ax_prof.set_ylabel("Anisotropy (A)")
             ax_prof.set_title("Anisotropy Profile")
             ax_prof.grid(True)
@@ -3736,10 +3825,9 @@ def open_A_profile_window(win, original_anisotropy):
             canvas_prof.draw_idle()
 
 
-    fig_p.canvas.mpl_connect('button_press_event', on_click)
-    fig_p.tight_layout()
-    canvas_p.draw_idle()
-    plt.close()
+    canvas_map.mpl_connect("button_press_event", on_click_map)
+
+    canvas_map.draw()
 
 def show_2dpcf_results(stack_cut, anisotropy_map, direction_map):
     """
