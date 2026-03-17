@@ -3006,7 +3006,7 @@ def toggle_kimogram():
 
 
 
-def load_and_display_images(file_paths,parent_window,control_frame):
+def load_and_display_images(file_paths, parent_window, control_frame, apply_button, mask_button, mask_status):
     global images
     loading_window = show_loading_popup(parent_window)
     def run():
@@ -3024,7 +3024,8 @@ def load_and_display_images(file_paths,parent_window,control_frame):
                     images.append(im)
 
             all_stacks = np.concatenate(images, axis=0)  # combine into one big stack
-            parent_window.after(0, lambda: open_image_viewer_with_nb_controls(all_stacks, parent_window, control_frame))
+            parent_window.after(0, lambda: open_image_viewer_with_nb_controls(
+                all_stacks,parent_window, control_frame,apply_button, mask_button, mask_status))
             parent_window.after(0, loading_window.destroy)
         except Exception as e:
             import traceback
@@ -3033,14 +3034,17 @@ def load_and_display_images(file_paths,parent_window,control_frame):
             parent_window.after(0, lambda: show_message("Error", error_msg))
 
     threading.Thread(target=run, daemon=True).start()
+    
+def load_images(parent_window, control_frame, apply_button, mask_button, mask_status):
+    file_paths = filedialog.askopenfilenames(
+        filetypes=[("image files", "*.tiff;*.tif;*.czi;*.b64")]
+    )
 
-def load_images(parent_window, control_frame):
-    file_paths = filedialog.askopenfilenames(filetypes=[("image files", "*.tiff;*.tif;*.czi;*.b64")])
     if file_paths:
-        threading.Thread(target=load_and_display_images, args=(file_paths,parent_window,control_frame,), daemon=True).start()
+        load_and_display_images(file_paths, parent_window,control_frame, apply_button, mask_button,mask_status)
     else:
         show_message('Error', "You haven't uploaded the files correctly. Try again :)")
-
+        
 def abrir_NB_ventana():
     button_style = {
             'bg': 'lightgrey',
@@ -3067,21 +3071,42 @@ def abrir_NB_ventana():
     # Controls frame for navigation and zoom buttons
     control_frame = tk.Frame(nb_window, bg=fondo)
     control_frame.grid(row=0, column=0, sticky="ew", padx=15, pady=10)
-
     
-    load_button = tk.Button(control_frame, text="Load file", command=lambda: load_images(image_frame,control_frame), **button_style)
+    
+    load_button = tk.Button(
+    control_frame,
+    text="Load file",
+    command=lambda: load_images(
+        image_frame,
+        control_frame,
+        apply_button,
+        mask_button,
+        mask_status
+    ),
+    **button_style
+)
     load_button.pack(side=tk.LEFT, padx=5, pady=10)
+    mask_status = tk.Label(control_frame, text="No mask set", fg="red")
+    mask_status.pack(side="right", padx=5)
 
+    apply_button = tk.Button(control_frame, text="Apply N&B")
+    apply_button.pack(side="left", padx=5)
+
+    mask_button = tk.Button(control_frame, text="Set mask")
+    mask_button.pack(side="left", padx=5)
     image_frame = tk.Frame(nb_window, bg=fondo)
     image_frame.grid(row=1, column=0, sticky="nsew")
     image_frame.grid_rowconfigure(0, weight=1)
     image_frame.grid_columnconfigure(0, weight=1)
 
-def open_image_viewer_with_nb_controls(stack, parent_frame, control_frame):
+def open_image_viewer_with_nb_controls(stack,parent_frame,
+    control_frame,apply_button,
+    mask_button,mask_status):
     global mask
-
+    mask = None
     for widget in parent_frame.winfo_children():
-        widget.destroy()
+        if widget not in (control_frame,):
+            widget.destroy()
 
     # =======================
     # Image viewer
@@ -3161,8 +3186,6 @@ def open_image_viewer_with_nb_controls(stack, parent_frame, control_frame):
     entry_N_min, entry_N_max = make_filter_row(2, "Number (N)")
     entry_B_min, entry_B_max = make_filter_row(3, "Brightness (B)")
 
-    mask_status = tk.Label(control_frame, text="No mask set", fg="red")
-    mask_status.pack(side="right", padx=5)
 
     # =======================
     # Mask
@@ -3332,12 +3355,8 @@ def open_image_viewer_with_nb_controls(stack, parent_frame, control_frame):
                   command=lambda: open_gauss_popup("N", N)).pack(side="left", padx=3)
 
         tk.Button(win, text="Save N&B", command=lambda: save_nb_results(N, B)).pack(pady=5)
-
-    # =======================
-    # Buttons
-    # =======================
-    tk.Button(control_frame, text="Apply N&B", command=apply_nb).pack(side="left", padx=5)
-    tk.Button(control_frame, text="Set mask", command=upload_mask).pack(side="left", padx=5)
+    apply_button.config(command=apply_nb)
+    mask_button.config(command=upload_mask)
 
 
 stack = None  # global to hold the loaded image stack
