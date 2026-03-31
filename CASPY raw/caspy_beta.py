@@ -3034,7 +3034,7 @@ def load_and_display_images(file_paths, parent_window, control_frame, apply_butt
             parent_window.after(0, lambda: show_message("Error", error_msg))
 
     threading.Thread(target=run, daemon=True).start()
-    
+   
 def load_images(parent_window, control_frame, apply_button, mask_button, mask_status):
     file_paths = filedialog.askopenfilenames(
         filetypes=[("image files", "*.tiff;*.tif;*.czi;*.b64")]
@@ -3099,14 +3099,21 @@ def abrir_NB_ventana():
     image_frame.grid_rowconfigure(0, weight=1)
     image_frame.grid_columnconfigure(0, weight=1)
 
-def open_image_viewer_with_nb_controls(stack,parent_frame,
-    control_frame,apply_button,
-    mask_button,mask_status):
+def open_image_viewer_with_nb_controls(stack, parent_frame, control_frame, apply_button, mask_button, mask_status):
+    print(18)
     global mask
     mask = None
+
+    # Limpiar el frame excepto los controles
     for widget in parent_frame.winfo_children():
         if widget not in (control_frame,):
             widget.destroy()
+
+    # --- NUEVA ETIQUETA PARA COORDENADAS ---
+    # Se coloca arriba del gráfico para que sea visible
+    coord_label = tk.Label(parent_frame, text="Mueve el mouse sobre la imagen", 
+                          font=("Consolas", 10, "bold"), bg="white", fg="blue")
+    coord_label.pack(side="top", anchor="e", padx=20, pady=2)
 
     # =======================
     # Image viewer
@@ -3117,34 +3124,90 @@ def open_image_viewer_with_nb_controls(stack,parent_frame,
 
     fig, ax = plt.subplots(figsize=(8, 6))
     im_plot = ax.imshow(stack[0], cmap="viridis")
-    ax.axis("off")
-
-    canvas = FigureCanvasTkAgg(fig, master=plot_frame)
-    canvas.get_tk_widget().pack(fill="both", expand=True)
+    ax.axis("on") # Cambiado a "on" para ver los ejes (opcional)
+    ax.set_title(f"Frame 0 / {len(stack)-1}")
+    
+    
+    # CRITICO: Guardar el objeto canvas en una variable separada
+    canvas_obj = FigureCanvasTkAgg(fig, master=plot_frame)
+    canvas_widget = canvas_obj.get_tk_widget()
+    canvas_widget.pack(fill="both", expand=True)
 
     current_frame = tk.IntVar(value=0)
 
-    def update_plot(val=None):
-        idx = current_frame.get()
-        if 0 <= idx < len(stack):
-            im_plot.set_data(stack[idx])
-            ax.set_title(f"Frame {idx+1} / {len(stack)}")
-            canvas.draw_idle()
+    # --- FUNCIÓN DE EVENTO PARA EL MOUSE ---
+    def on_mouse_move(event):
+        if event.inaxes == ax and event.xdata is not None and event.ydata is not None:
+            # Matplotlib usa (x,y), pero numpy usa [y,x]
+            ix, iy = int(round(event.xdata)), int(round(event.ydata))
+            
+            # Validar límites de la imagen
+            if 0 <= iy < stack.shape[1] and 0 <= ix < stack.shape[2]:
+                idx = current_frame.get()
 
-    slider = tk.Scale(
-        parent_frame,
+                val = stack[idx, iy, ix]
+                coord_label.config(text=f"Frame {idx} | x={ix}, y={iy} | Intensidad={val:.2f}")
+        else:
+            coord_label.config(text="Fuera de imagen")
+
+    # CONECTAR EL EVENTO
+    canvas_obj.mpl_connect('motion_notify_event', on_mouse_move)
+
+    def update_plot(*args):
+        try:
+            idx = current_frame.get()
+            print(idx)
+            if idx >= len(stack):
+                idx = len(stack) - 1
+            if 0 <= idx < len(stack):
+                im_plot.set_data(stack[idx])
+                # Autoscale para mejorar visualización
+                # vmin, vmax = np.percentile(stack[idx], [1, 99])
+                vmin, vmax = min(stack[idx].ravel()), max(stack[idx].ravel())
+                
+                im_plot.set_clim(vmin, vmax)
+                ax.set_title(f"Frame {idx} / {len(stack)-1}")
+                canvas_obj.draw_idle()
+            print(19)
+        except tk.TclError:
+            pass # Maneja casos donde el input del spinbox sea temporalmente inválido
+    
+    
+    # slider = tk.Scale(
+    #     parent_frame,
+    #     from_=1,
+    #     to=len(stack)-1,
+    #     orient="horizontal",
+    #     variable=current_frame,
+    #     command=update_plot,
+    # )
+    # slider.pack(fill="x", padx=100)
+
+ # --- FRAME PARA SPINBOX Y TOTAL ---
+    navigation_frame = tk.Frame(parent_frame, bg="white")
+    navigation_frame.pack(side="top", fill="x", padx=100, pady=5)
+
+    tk.Label(navigation_frame, text="Frame: ", bg="white").pack(side="left")
+
+    # Spinbox configurado de 0 a Total-1
+    frame_spinbox = tk.Spinbox(
+        navigation_frame,
         from_=0,
         to=len(stack) - 1,
-        orient="horizontal",
-        variable=current_frame,
-        command=update_plot,
+        textvariable=current_frame,
+        command=update_plot, # Se ejecuta al usar las flechas
+        width=10
     )
-    slider.pack(fill="x", padx=10)
+    frame_spinbox.pack(side="left", padx=5)
 
-    plt.close(fig)
+    # Etiqueta de total
+    tk.Label(navigation_frame, text=f"of {len(stack) - 1}", 
+             bg="white", font=("Arial", 9, "italic")).pack(side="left")
+
+    current_frame.trace_add("write", update_plot)
 
     # =======================
-    # Controls
+    # Controls (se mantiene igual el resto...)
     # =======================
     bottom_controls = tk.Frame(parent_frame)
     bottom_controls.pack(side="top", fill="x", padx=10, pady=10)
@@ -3173,8 +3236,9 @@ def open_image_viewer_with_nb_controls(stack,parent_frame,
     # ---- Filters ----
     filter_frame = tk.LabelFrame(bottom_controls, text="Filters (Min / Max)", padx=10, pady=10)
     filter_frame.pack(side="left", fill="y")
-
+    
     def make_filter_row(row, label):
+        print(20)
         tk.Label(filter_frame, text=label).grid(row=row, column=0, sticky="w")
         e_min = tk.Entry(filter_frame, width=8)
         e_max = tk.Entry(filter_frame, width=8)
@@ -3186,183 +3250,243 @@ def open_image_viewer_with_nb_controls(stack,parent_frame,
     entry_N_min, entry_N_max = make_filter_row(2, "Number (N)")
     entry_B_min, entry_B_max = make_filter_row(3, "Brightness (B)")
 
-
-    # =======================
-    # Mask
-    # =======================
     def upload_mask():
         global mask
         files = filedialog.askopenfilenames(filetypes=[("Matrix", "*.txt")])
         if files:
-            mask = np.loadtxt(files[0]).astype(bool).ravel()
+            mask_data = np.loadtxt(files[0])
+            mask = mask_data.astype(bool)
             mask_status.config(text="Mask set", fg="green")
+        print(21)
 
-    # =======================
-    # Save
-    # =======================
     def save_nb_results(N, B):
         pixels = int(np.sqrt(len(N)))
-        N = N.reshape(pixels, pixels)
-        B = B.reshape(pixels, pixels)
-
+        N_mat = N.reshape(pixels, pixels)
+        B_mat = B.reshape(pixels, pixels)
         path = filedialog.asksaveasfilename(defaultextension=".csv")
         if path:
-            np.savetxt(path.replace(".csv", "_N.csv"), N, delimiter=",")
-            np.savetxt(path.replace(".csv", "_B.csv"), B, delimiter=",")
+            np.savetxt(path.replace(".csv", "_N.csv"), N_mat, delimiter=",")
+            np.savetxt(path.replace(".csv", "_B.csv"), B_mat, delimiter=",")
+        print(22)
+  
+    # Aquí definiremos la función apply_nb dentro para que tenga acceso a los entry
+    def apply_nb_internal():
+        # Ver la implementación de apply_nb abajo e integrarla aquí o llamarla
+        apply_nb(stack, entry_start, entry_end, entry_s, entry_offset, entry_sigma, 
+                 entry_I_min, entry_I_max, entry_N_min, entry_N_max, entry_B_min, entry_B_max, 
+                 parent_frame, save_nb_results, upload_mask)
+
+    apply_button.config(command=apply_nb_internal)
+    mask_button.config(command=upload_mask)
 
     # =======================
     # Apply N&B
     # =======================
-    def apply_nb():
-        global mask
+   
+def apply_nb(stack, entry_start, entry_end, entry_s, entry_offset, entry_sigma, 
+             entry_I_min, entry_I_max, entry_N_min, entry_N_max, entry_B_min, entry_B_max, 
+             parent_frame, save_nb_results, upload_mask):
 
-        start = int(entry_start.get() or 0)
-        end = int(entry_end.get() or len(stack))
-        S = float(entry_s.get())
-        offset = float(entry_offset.get())
-        sigma = float(entry_sigma.get())
+    print(23)
+    global mask
 
-        data = stack[start:end]
-        I = np.mean(data, axis=0).ravel()
-        VAR = np.var(data, axis=0).ravel()
+    start = int(entry_start.get() or 0)
+    end = int(entry_end.get() or len(stack))
+    S = float(entry_s.get())
+    offset = float(entry_offset.get())
+    sigma = float(entry_sigma.get())
 
-        B = (VAR - sigma**2) / (S * (I - offset))
-        N = (I - offset)**2 / (VAR - sigma**2)
+    data = stack[start:end]
 
-        # ---- Filters ----
-        I_min = float(entry_I_min.get() or -np.inf)
-        I_max = float(entry_I_max.get() or np.inf)
-        N_min = float(entry_N_min.get() or -np.inf)
-        N_max = float(entry_N_max.get() or np.inf)
-        B_min = float(entry_B_min.get() or -np.inf)
-        B_max = float(entry_B_max.get() or np.inf)
+    if mask is not None:
+        mask_reshaped = mask.reshape(data.shape[1], data.shape[2])
+        data = data * mask_reshaped
+    
+    I = np.mean(data, axis=0).ravel()
+    VAR = np.nanvar(data, axis=0, ddof=0).ravel()
 
-        base_filter = (
-            (I >= I_min) & (I <= I_max) &
-            (N >= N_min) & (N <= N_max) &
-            (B >= B_min) & (B <= B_max)
-        )
+    B = (VAR - sigma**2) / (S * (I - offset))
+    N = (I - offset)**2 / (VAR - sigma**2)
 
-        if mask is not None and mask.size == base_filter.size:
-            base_filter &= mask
+    # for k in range(0,len(I)):
+    #     if math.isnan(I[k]) or math.isnan(VAR[k]):
+    #         B[k]= np.nan  
+    #         N[k]= np.nan
 
-        # =======================
-        # Results window
-        # =======================
-        shape = stack.shape[1:]
-        win = tk.Toplevel(parent_frame)
-        win.title("N&B Results")
 
-        plots = tk.Frame(win,background='white')
-        plots.pack(side="top", fill="both", expand=True)
 
-        hists = tk.Frame(win)
-        hists.pack(side="bottom", fill="both", expand=True)
+    #     if I[k] == 0 or I[k] - offset==0 or VAR[k] == sigma**2 or VAR[k] - sigma**2-S*(I[k]-offset)==0:
+    #         B[k]= 1  
+    #         N[k]= 0
 
-        # --- estado filtro gaussiano ---
-        gauss_state = {"type": None, "mu": None, "sigma": None}
 
-        def apply_gaussian_filter():
-            filt = base_filter.copy()
+    #     else:
+    #         B[k] = ((VAR[k] - sigma**2))/(S*(I[k] - offset))  ## B is define as Eq. 6 divide by S factor in DOI: 10.1002/jemt.20526
+    #         N[k] = ((I[k]-offset)**2)/(VAR[k] - sigma**2)
 
-            if gauss_state["type"] == "I":
-                lo = gauss_state["mu"] - gauss_state["sigma"]
-                hi = gauss_state["mu"] + gauss_state["sigma"]
-                filt &= (I >= lo) & (I <= hi)
-            elif gauss_state["type"] == "B":
-                lo = gauss_state["mu"] - gauss_state["sigma"]
-                hi = gauss_state["mu"] + gauss_state["sigma"]
-                filt &= (B >= lo) & (B <= hi)
-            elif gauss_state["type"] == "N":
-                lo = gauss_state["mu"] - gauss_state["sigma"]
-                hi = gauss_state["mu"] + gauss_state["sigma"]
-                filt &= (N >= lo) & (N <= hi)
+    I_min = float(entry_I_min.get() or -np.inf)
+    I_max = float(entry_I_max.get() or np.inf)
+    N_min = float(entry_N_min.get() or -np.inf)
+    N_max = float(entry_N_max.get() or np.inf)
+    B_min = float(entry_B_min.get() or -np.inf)
+    B_max = float(entry_B_max.get() or np.inf)
 
-            B_plot = B.copy()
-            N_plot = N.copy()
+    base_filter = (
+        (I >= I_min) & (I <= I_max) &
+        (N >= N_min) & (N <= N_max) &
+        (B >= B_min) & (B <= B_max)
+    )
 
-            B_plot[~filt] = np.nan
-            N_plot[~filt] = np.nan
+    # =======================
+    # Results window
+    # =======================
+    shape = stack.shape[1:]
+    win = tk.Toplevel(parent_frame)
+    win.title("N&B Results")
+    win.configure(bg='white')
 
-            ax_B.clear()
-            ax_N.clear()
+    # --- ETIQUETA DE COORDENADAS PARA RESULTADOS ---
+    res_info_label = tk.Label(win, text="Mueve el mouse sobre los mapas para ver valores", 
+                             font=("Arial", 11, "bold"), bg="white", fg="darkblue")
+    res_info_label.pack(side="top", pady=5)
 
-            imB = ax_B.imshow(B_plot.reshape(shape), cmap="viridis")
-            imN = ax_N.imshow(N_plot.reshape(shape), cmap="viridis")
+    plots = tk.Frame(win, background='white')
+    plots.pack(side="top", fill="both", expand=True)
 
-            ax_B.set_title("Brightness (B)")
-            ax_N.set_title("Number (N)")
+    hists = tk.Frame(win)
+    hists.pack(side="bottom", fill="both", expand=True)
 
-            fig_B.canvas.draw_idle()
-            fig_N.canvas.draw_idle()
+    # Convertir a 2D para indexar fácilmente
+    B_2D = B.reshape(shape)
+    N_2D = N.reshape(shape)
 
-        # ---- Maps ----
-        fig_B, ax_B = plt.subplots(figsize=(4, 4))
-        fig_N, ax_N = plt.subplots(figsize=(4, 4))
+    # ---- Maps ----
+    fig_B, ax_B = plt.subplots(figsize=(4, 4))
+    fig_N, ax_N = plt.subplots(figsize=(4, 4))
 
-        ax_B.imshow(B.reshape(shape), cmap="viridis")
-        ax_N.imshow(N.reshape(shape), cmap="viridis")
-        ax_N.set_title('Number')
-        ax_B.set_title('Brightness')
-        FigureCanvasTkAgg(fig_B, master=plots).get_tk_widget().pack(side="left", expand=True)
-        FigureCanvasTkAgg(fig_N, master=plots).get_tk_widget().pack(side="left", expand=True)
+    ax_B.imshow(B_2D, cmap="viridis")
+    ax_B.set_title('Brightness (B)')
+    ax_N.imshow(N_2D, cmap="viridis")
+    ax_N.set_title('Number (N)')
 
-        # ---- Histograms ----
-        for data, title, xlabel in [
-            (I, "Intensity", "I"),
-            (B, f"B (mean={np.nanmean(B):.2f})", "B"),
-            (N, f"N (mean={np.nanmean(N):.2f})", "N"),
-        ]:
-            fig, ax = plt.subplots(figsize=(4, 2.5))
-            ax.hist(data[~np.isnan(data)], bins=30, color="slateblue")
-            ax.set_title(title)
-            ax.set_xlabel(xlabel)
-            ax.set_ylabel("Counts")
-            FigureCanvasTkAgg(fig, master=hists).get_tk_widget().pack(side="left", expand=True)
+    # GUARDAR CANVAS COMO OBJETOS
+    canvas_B = FigureCanvasTkAgg(fig_B, master=plots)
+    canvas_B.get_tk_widget().pack(side="left", expand=True, fill="both")
+    
+    canvas_N = FigureCanvasTkAgg(fig_N, master=plots)
+    canvas_N.get_tk_widget().pack(side="left", expand=True, fill="both")
 
-        # ---- Gaussian buttons ----
-        def open_gauss_popup(var, data):
-            pop = tk.Toplevel(win)
-            pop.title(f"Gaussian {var}")
+    # --- FUNCIÓN DE RASTREO PARA RESULTADOS ---
+    def on_move_results(event):
+        if event.inaxes is None or event.xdata is None or event.ydata is None:
+            return
+        
+        ix, iy = int(round(event.xdata)), int(round(event.ydata))
+        
+        # Validar límites
+        if 0 <= iy < shape[0] and 0 <= ix < shape[1]:
+            if event.inaxes == ax_B:
+                val = B_2D[iy, ix]
+                res_info_label.config(text=f"Mapa B | x:{ix}, y:{iy} | Valor:{val:.4f}")
+            elif event.inaxes == ax_N:
+                val = N_2D[iy, ix]
+                res_info_label.config(text=f"Mapa N | x:{ix}, y:{iy} | Valor:{val:.4f}")
 
-            mu = tk.DoubleVar(value=np.nanmean(data))
-            sig = tk.DoubleVar(value=np.nanstd(data))
+    # CONECTAR AMBOS CANVAS
+    canvas_B.mpl_connect('motion_notify_event', on_move_results)
+    canvas_N.mpl_connect('motion_notify_event', on_move_results)
+ 
+ # 2. Función de actualización corregida
+    def on_move_results(event):
+        if event.inaxes is None:
+            return
+        
+        # Detectar en qué gráfico estamos
+        if event.inaxes == ax_B:
+            name = "B"
+            val = B_2D[int(round(event.ydata)), int(round(event.xdata))]
+        elif event.inaxes == ax_N:
+            name = "N"
+            val = N_2D[int(round(event.ydata)), int(round(event.xdata))]
+        else:
+            return
 
-            tk.Label(pop, text="μ").pack()
-            tk.Scale(pop, from_=mu.get()-sig.get()*3, to=mu.get()+sig.get()*3,
-                     resolution=0.01, orient="horizontal", variable=mu).pack(fill="x")
+        ix, iy = int(round(event.xdata)), int(round(event.ydata))
+        res_info_label.config(text=f"{name} Map  | (x={ix}, y={iy}) | Value={val:.4f}")
 
-            tk.Label(pop, text="σ").pack()
-            tk.Scale(pop, from_=0.01, to=3*sig.get(),
-                     resolution=0.01, orient="horizontal", variable=sig).pack(fill="x")
+    # 3. Conectar los eventos a los objetos canvas guardados
+    canvas_B.mpl_connect('motion_notify_event', on_move_results)
+    canvas_N.mpl_connect('motion_notify_event', on_move_results)
 
-            def apply():
-                gauss_state["type"] = var
-                gauss_state["mu"] = mu.get()
-                gauss_state["sigma"] = sig.get()
-                apply_gaussian_filter()
+    
+    print(25)
 
-            tk.Button(pop, text="Apply", command=apply).pack(pady=5)
+    # ---- Histograms ----
+    for data, title, xlabel in [
+        (I, "Intensity", "I"),
+        (B, f"B (mean={np.nanmean(B):.2f})", "B"),
+        (N, f"N (mean={np.nanmean(N):.2f})", "N"),
+    ]:
+        fig, ax = plt.subplots(figsize=(4, 2.5))
+        ax.hist(data[~np.isnan(data)], bins=30, color="slateblue")
+        ax.set_title(title)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel("Counts")
+        FigureCanvasTkAgg(fig, master=hists).get_tk_widget().pack(side="left", expand=True)
 
-        gauss_frame = tk.Frame(win)
-        gauss_frame.pack(pady=5)
+    # ---- Gaussian buttons ----
+    def open_gauss_popup(var, data):
 
-        tk.Button(gauss_frame, text="Gauss I",
-                  command=lambda: open_gauss_popup("I", I)).pack(side="left", padx=3)
-        tk.Button(gauss_frame, text="Gauss B",
-                  command=lambda: open_gauss_popup("B", B)).pack(side="left", padx=3)
-        tk.Button(gauss_frame, text="Gauss N",
-                  command=lambda: open_gauss_popup("N", N)).pack(side="left", padx=3)
+        print(26)
 
-        tk.Button(win, text="Save N&B", command=lambda: save_nb_results(N, B)).pack(pady=5)
-    apply_button.config(command=apply_nb)
-    mask_button.config(command=upload_mask)
+        pop = tk.Toplevel(win)
+        pop.title(f"Gaussian {var}")
 
+        mu = tk.DoubleVar(value=np.nanmean(data))
+        sig = tk.DoubleVar(value=np.nanstd(data))
+
+        tk.Label(pop, text="μ").pack()
+        tk.Scale(pop, from_=mu.get()-sig.get()*3, to=mu.get()+sig.get()*3,
+                    resolution=0.01, orient="horizontal", variable=mu).pack(fill="x")
+
+        tk.Label(pop, text="σ").pack()
+        tk.Scale(pop, from_=0.01, to=3*sig.get(),
+                    resolution=0.01, orient="horizontal", variable=sig).pack(fill="x")
+
+        def apply():
+
+            print(27)
+
+            gauss_state["type"] = var
+            gauss_state["mu"] = mu.get()
+            gauss_state["sigma"] = sig.get()
+            apply_gaussian_filter()
+
+        tk.Button(pop, text="Apply", command=apply).pack(pady=5)
+
+    gauss_frame = tk.Frame(win)
+    gauss_frame.pack(pady=5)
+
+    tk.Button(gauss_frame, text="Gauss I",
+                command=lambda: open_gauss_popup("I", I)).pack(side="left", padx=3)
+    tk.Button(gauss_frame, text="Gauss B",
+                command=lambda: open_gauss_popup("B", B)).pack(side="left", padx=3)
+    tk.Button(gauss_frame, text="Gauss N",
+                command=lambda: open_gauss_popup("N", N)).pack(side="left", padx=3)
+
+    tk.Button(win, text="Save N&B", command=lambda: save_nb_results(N, B)).pack(pady=5)
+
+print(28)
+
+# apply_button.config(command=apply_nb)
+# mask_button.config(command=upload_mask)
 
 stack = None  # global to hold the loaded image stack
 
-
 def load_images_and_update(parent_window, control_frame, im_plot, ax, slider, canvas,tipo):
+
+    print(29)
+
     global stack
     file_paths = filedialog.askopenfilenames(
         filetypes=[("Image files", "*.tiff;*.tif;*.czi;*.b64")]
@@ -3373,6 +3497,9 @@ def load_images_and_update(parent_window, control_frame, im_plot, ax, slider, ca
     loading_window = show_loading_popup(parent_window)
 
     def run():
+        
+        print(30)
+
         global stack
         try:
             images = []
@@ -3429,6 +3556,7 @@ def _autoscale_image(im_plot, frame):
     im_plot.set_clim(vmin=vmin, vmax=vmax)
 
 def update_display(im_plot, ax, slider, canvas):
+
     if stack is not None and len(stack) > 0:
         frame0 = stack[0]
         im_plot.set_data(frame0)
@@ -4449,4 +4577,3 @@ def start_application():
 
 if __name__ == "__main__":
     start_application()
-
