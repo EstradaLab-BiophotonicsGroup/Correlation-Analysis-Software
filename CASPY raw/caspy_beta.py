@@ -3800,13 +3800,8 @@ def apply_2d_pcf(entries, parent_window):
 from matplotlib.ticker import FuncFormatter
 
 
-def open_A_profile_window(win, original_anisotropy):
 
-    import tkinter as tk
-    import numpy as np
-    from matplotlib.figure import Figure
-    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-    from skimage.measure import profile_line
+def open_A_profile_window(win, original_anisotropy):
 
     prof_win = tk.Toplevel(win)
     prof_win.title("Anisotropy Map")
