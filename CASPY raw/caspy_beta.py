@@ -3624,6 +3624,7 @@ def sprite_calculation_numba(vals, coords):
         A = max(0.0, min(A, 1.0))
     return theta, A
 
+
 # ---------------------------
 # Main 2D-pCF function
 # ---------------------------
@@ -3738,15 +3739,15 @@ def graph_direction(a,tita,th=None,intensity=None):
     plt.ylabel('Y axis')
     plt.show()
 
-global anisotropy_map, direction_map
+global anisotropy_map, direction_map, radius
 anisotropy_map = None
 direction_map = None
-
+radius = None
 import threading
   
 from skimage.measure import profile_line
 def apply_2d_pcf(entries, parent_window):
-    global stack, anisotropy_map, direction_map, tau_map
+    global stack, anisotropy_map, direction_map, tau_map, radius
 
     computing_label = tk.Label(
         parent_window,
@@ -3792,7 +3793,6 @@ def apply_2d_pcf(entries, parent_window):
         50,
         lambda: threading.Thread(target=run_pcf, daemon=True).start()
     )
-
 
 
 
@@ -4097,18 +4097,29 @@ def show_2dpcf_results(stack_cut, anisotropy_map, direction_map, tau_map):
     plt.close()
 
     def save_maps():
+        global stack, radius
         path = filedialog.asksaveasfilename(
-            defaultextension=".csv",
-            filetypes=[("CSV files", "*.csv")],
-            title="Save 2D-pCF results"
+        defaultextension=".csv",
+        filetypes=[("CSV files", "*.csv")],
+        title="Save 2D-pCF results"
         )
         if not path:
             return
 
         base = path.replace(".csv", "")
-        np.savetxt(base + "_anisotropy.csv", original_anisotropy, delimiter=",")
-        np.savetxt(base + "_direction.csv", original_direction, delimiter=",")
-        np.savetxt(base + "_tau.csv", tau_map, delimiter=",")
+
+        def add_border(matrix, radius, img_size=len(stack[0])):
+            full = np.zeros((img_size, img_size))
+            full[radius//2:radius//2 + matrix.shape[0], radius//2:radius//2 + matrix.shape[1]] = matrix
+            return full
+
+        anisotropy_full = add_border(original_anisotropy, radius)
+        direction_full = add_border(original_direction, radius)
+        tau_full = add_border(tau_map, radius)
+
+        np.savetxt(base + "_anisotropy.csv", anisotropy_full, delimiter=",")
+        np.savetxt(base + "_direction.csv", direction_full, delimiter=",")
+        np.savetxt(base + "_tau.csv", tau_full, delimiter=",")
     tk.Button(control_frame, text="Save results", command=save_maps).pack(side="right", padx=5)
 
     tk.Button(
@@ -4127,7 +4138,7 @@ def apply_2d_pcf_core(table_data):
     NO crea threads.
     """
 
-    global anisotropy_map, direction_map, stack, tau_map
+    global anisotropy_map, direction_map, stack, tau_map, radius
 
     first = int(table_data.get("First frame", 0))
     last  = int(table_data.get("Last frame", len(stack)))
@@ -4330,6 +4341,7 @@ def abrir_2d_pcf_ventana():
 
     # Attach function to window so load_images_and_update can call it
     pcf2d_window.update_slider = update_slider
+
 
 
 
