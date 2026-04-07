@@ -3100,7 +3100,7 @@ def abrir_NB_ventana():
     image_frame.grid_columnconfigure(0, weight=1)
 
 def open_image_viewer_with_nb_controls(stack, parent_frame, control_frame, apply_button, mask_button, mask_status):
-    print(18)
+
     global mask
     mask = None
 
@@ -3168,7 +3168,7 @@ def open_image_viewer_with_nb_controls(stack, parent_frame, control_frame, apply
                 im_plot.set_clim(vmin, vmax)
                 ax.set_title(f"Frame {idx} / {len(stack)-1}")
                 canvas_obj.draw_idle()
-            print(19)
+
         except tk.TclError:
             pass # Maneja casos donde el input del spinbox sea temporalmente inválido
     
@@ -3238,7 +3238,7 @@ def open_image_viewer_with_nb_controls(stack, parent_frame, control_frame, apply
     filter_frame.pack(side="left", fill="y")
     
     def make_filter_row(row, label):
-        print(20)
+
         tk.Label(filter_frame, text=label).grid(row=row, column=0, sticky="w")
         e_min = tk.Entry(filter_frame, width=8)
         e_max = tk.Entry(filter_frame, width=8)
@@ -3257,7 +3257,6 @@ def open_image_viewer_with_nb_controls(stack, parent_frame, control_frame, apply
             mask_data = np.loadtxt(files[0])
             mask = mask_data.astype(bool)
             mask_status.config(text="Mask set", fg="green")
-        print(21)
 
     def save_nb_results(N, B):
         pixels = int(np.sqrt(len(N)))
@@ -3267,7 +3266,6 @@ def open_image_viewer_with_nb_controls(stack, parent_frame, control_frame, apply
         if path:
             np.savetxt(path.replace(".csv", "_N.csv"), N_mat, delimiter=",")
             np.savetxt(path.replace(".csv", "_B.csv"), B_mat, delimiter=",")
-        print(22)
   
     # Aquí definiremos la función apply_nb dentro para que tenga acceso a los entry
     def apply_nb_internal():
@@ -3287,7 +3285,6 @@ def apply_nb(stack, entry_start, entry_end, entry_s, entry_offset, entry_sigma,
              entry_I_min, entry_I_max, entry_N_min, entry_N_max, entry_B_min, entry_B_max, 
              parent_frame, save_nb_results, upload_mask):
 
-    print(23)
     global mask
 
     start = int(entry_start.get() or 0)
@@ -3418,8 +3415,6 @@ def apply_nb(stack, entry_start, entry_end, entry_s, entry_offset, entry_sigma,
     canvas_B.mpl_connect('motion_notify_event', on_move_results)
     canvas_N.mpl_connect('motion_notify_event', on_move_results)
 
-    
-    print(25)
 
     # ---- Histograms ----
     for data, title, xlabel in [
@@ -3437,8 +3432,6 @@ def apply_nb(stack, entry_start, entry_end, entry_s, entry_offset, entry_sigma,
     # ---- Gaussian buttons ----
     def open_gauss_popup(var, data):
 
-        print(26)
-
         pop = tk.Toplevel(win)
         pop.title(f"Gaussian {var}")
 
@@ -3455,7 +3448,6 @@ def apply_nb(stack, entry_start, entry_end, entry_s, entry_offset, entry_sigma,
 
         def apply():
 
-            print(27)
 
             gauss_state["type"] = var
             gauss_state["mu"] = mu.get()
@@ -3476,7 +3468,6 @@ def apply_nb(stack, entry_start, entry_end, entry_s, entry_offset, entry_sigma,
 
     tk.Button(win, text="Save N&B", command=lambda: save_nb_results(N, B)).pack(pady=5)
 
-print(28)
 
 # apply_button.config(command=apply_nb)
 # mask_button.config(command=upload_mask)
@@ -3485,7 +3476,6 @@ stack = None  # global to hold the loaded image stack
 
 def load_images_and_update(parent_window, control_frame, im_plot, ax, slider, canvas,tipo):
 
-    print(29)
 
     global stack
     file_paths = filedialog.askopenfilenames(
@@ -3497,8 +3487,6 @@ def load_images_and_update(parent_window, control_frame, im_plot, ax, slider, ca
     loading_window = show_loading_popup(parent_window)
 
     def run():
-        
-        print(30)
 
         global stack
         try:
