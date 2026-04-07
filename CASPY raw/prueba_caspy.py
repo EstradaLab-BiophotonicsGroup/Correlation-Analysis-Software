@@ -125,8 +125,6 @@ def animar_gif(root, logo_label, frames, frame_index):
     frame_index = (frame_index + 1) % len(frames)
     root.after(50, animar_gif, root, logo_label, frames, frame_index)
 
-    print(3)
-
 
 # Create a new window with a message
 def nueva_ventana(root, titulo, mensaje):
@@ -136,12 +134,11 @@ def nueva_ventana(root, titulo, mensaje):
     ventana.configure(bg="white")
     tk.Label(ventana, text=mensaje, font=("Arial", 18), bg="white").grid(pady=40)
 
-    print(4)
 
 def get_user_data_dir():
     base = Path.home() / "Documents" / APP_NAME
     base.mkdir(exist_ok=True)
-    print(5)
+
     return base
 
 def resource_path(relative_path):
@@ -149,7 +146,7 @@ def resource_path(relative_path):
         base_path = sys._MEIPASS
     except Exception:
         base_path = os.path.abspath(".")
-    print(6)
+
     return os.path.join(base_path, relative_path)
 
 
@@ -175,7 +172,7 @@ def show_message(kind, message):
         messagebox.showerror(kind, message)
     else:
         messagebox.showinfo(kind, message)
-    print(7)
+
     root.destroy()  # Close the window
     
 def show_loading_popup(pcf_window):
@@ -191,7 +188,6 @@ def show_loading_popup(pcf_window):
     loading_win.protocol("WM_DELETE_WINDOW", lambda: None)
     loading_win.transient(pcf_window)  # Keep it above main window
     loading_win.grab_set()       # Block other UI interaction
-    print(8)
 
     return loading_win
 
@@ -222,12 +218,12 @@ def my_colors(cmap_var):
         except ValueError:
             print(f"[WARNING] Colormap '{cmap_name}' no reconocido. Usando 'smooth_viridis'.")
             return LinearSegmentedColormap.from_list('smooth_viridis', colores['smooth_viridis'])
-    print(9)
 
 
 def on_cmap_change(event):
+
     global cmap_var, current_figures, original_kimograms
-    print(10)
+
     selected_cmap = cmap_var.get()
     if selected_cmap == 'smooth_viridis':
         selected_cmap = 'viridis'
@@ -265,7 +261,7 @@ import czifile
 import xml.etree.ElementTree as ET
 def extract_metadata(file_path, callback):
     global dwell_time, pixels
-    print(11)
+
     try:
         czi_file = czifile.CziFile(file_path)
         metadata = czi_file.metadata()  # Call the method to get metadata
@@ -298,13 +294,13 @@ def load_czi_file(file_path, callback=None):
     
     # Extract metadata (and ensure callback is called after extracting)
     extract_metadata(file_path, lambda: callback() if callback else None)
-    print(12)
+
     return [channels[:, i, :] for i in range(num_channels)]
 
 import queue
 def ask_for_pixels_threadsafe(parent):
     q = queue.Queue()
-    print(13)
+
     def ask():
         while True:
             user_input = simpledialog.askstring("Missing Metadata", "Enter number of pixels (default = 128):", parent=parent)
@@ -335,7 +331,6 @@ def read_B64(Archivo, tipo='line', parent_window=None):
     pixels = None
     sampling_freq = None
 
-    print(14)
 
     try:
         metadata = open(Archivo[:-8] + '.jrn', 'r').readlines()
@@ -383,8 +378,6 @@ def load_and_display_images(file_paths, parent_window, control_frame, apply_butt
     global images
     loading_window = show_loading_popup(parent_window)
 
-    print(15)
-
     def run():
         try:
             images = []
@@ -421,7 +414,6 @@ def load_images(parent_window, control_frame, apply_button, mask_button, mask_st
     else:
         show_message('Error', "You haven't uploaded the files correctly. Try again :)")
     
-    print(16)
 
 
 def abrir_NB_ventana():
@@ -489,7 +481,7 @@ def abrir_NB_ventana():
 
 
 def open_image_viewer_with_nb_controls(stack, parent_frame, control_frame, apply_button, mask_button, mask_status):
-    print(18)
+
     global mask
     mask = None
 
@@ -557,7 +549,7 @@ def open_image_viewer_with_nb_controls(stack, parent_frame, control_frame, apply
                 im_plot.set_clim(vmin, vmax)
                 ax.set_title(f"Frame {idx} / {len(stack)-1}")
                 canvas_obj.draw_idle()
-            print(19)
+
         except tk.TclError:
             pass # Maneja casos donde el input del spinbox sea temporalmente inválido
     
@@ -627,7 +619,7 @@ def open_image_viewer_with_nb_controls(stack, parent_frame, control_frame, apply
     filter_frame.pack(side="left", fill="y")
     
     def make_filter_row(row, label):
-        print(20)
+
         tk.Label(filter_frame, text=label).grid(row=row, column=0, sticky="w")
         e_min = tk.Entry(filter_frame, width=8)
         e_max = tk.Entry(filter_frame, width=8)
@@ -646,7 +638,7 @@ def open_image_viewer_with_nb_controls(stack, parent_frame, control_frame, apply
             mask_data = np.loadtxt(files[0])
             mask = mask_data.astype(bool)
             mask_status.config(text="Mask set", fg="green")
-        print(21)
+
 
     def save_nb_results(N, B):
         pixels = int(np.sqrt(len(N)))
@@ -656,7 +648,7 @@ def open_image_viewer_with_nb_controls(stack, parent_frame, control_frame, apply
         if path:
             np.savetxt(path.replace(".csv", "_N.csv"), N_mat, delimiter=",")
             np.savetxt(path.replace(".csv", "_B.csv"), B_mat, delimiter=",")
-        print(22)
+
   
     # Aquí definiremos la función apply_nb dentro para que tenga acceso a los entry
     def apply_nb_internal():
@@ -673,7 +665,6 @@ def apply_nb(stack, entry_start, entry_end, entry_s, entry_offset, entry_sigma,
              entry_I_min, entry_I_max, entry_N_min, entry_N_max, entry_B_min, entry_B_max, 
              parent_frame, save_nb_results, upload_mask):
 
-    print(23)
     global mask
 
     start = int(entry_start.get() or 0)
@@ -805,7 +796,6 @@ def apply_nb(stack, entry_start, entry_end, entry_s, entry_offset, entry_sigma,
     canvas_N.mpl_connect('motion_notify_event', on_move_results)
 
     
-    print(25)
 
     # ---- Histograms ----
     for data, title, xlabel in [
@@ -823,7 +813,6 @@ def apply_nb(stack, entry_start, entry_end, entry_s, entry_offset, entry_sigma,
     # ---- Gaussian buttons ----
     def open_gauss_popup(var, data):
 
-        print(26)
 
         pop = tk.Toplevel(win)
         pop.title(f"Gaussian {var}")
@@ -840,8 +829,6 @@ def apply_nb(stack, entry_start, entry_end, entry_s, entry_offset, entry_sigma,
                     resolution=0.01, orient="horizontal", variable=sig).pack(fill="x")
 
         def apply():
-
-            print(27)
 
             gauss_state["type"] = var
             gauss_state["mu"] = mu.get()
@@ -862,7 +849,6 @@ def apply_nb(stack, entry_start, entry_end, entry_s, entry_offset, entry_sigma,
 
     tk.Button(win, text="Save N&B", command=lambda: save_nb_results(N, B)).pack(pady=5)
 
-print(28)
 
 # apply_button.config(command=apply_nb)
 # mask_button.config(command=upload_mask)
@@ -872,9 +858,8 @@ stack = None  # global to hold the loaded image stack
 
 def load_images_and_update(parent_window, control_frame, im_plot, ax, slider, canvas,tipo):
 
-    print(29)
-
     global stack
+
     file_paths = filedialog.askopenfilenames(
         filetypes=[("Image files", "*.tiff;*.tif;*.czi;*.b64")]
     )
@@ -885,8 +870,6 @@ def load_images_and_update(parent_window, control_frame, im_plot, ax, slider, ca
 
     def run():
         
-        print(30)
-
         global stack
         try:
             images = []
@@ -935,8 +918,6 @@ def load_images_and_update(parent_window, control_frame, im_plot, ax, slider, ca
 
 def _autoscale_image(im_plot, frame):
 
-    print(31)
-
     # Robustly set color limits for the current frame
     vmin = float(np.nanmin(frame))
     vmax = float(np.nanmax(frame))
@@ -946,8 +927,6 @@ def _autoscale_image(im_plot, frame):
     im_plot.set_clim(vmin=vmin, vmax=vmax)
 
 def update_display(im_plot, ax, slider, canvas):
-
-    print(32)
 
     if stack is not None and len(stack) > 0:
         frame0 = stack[0]
@@ -966,8 +945,6 @@ from numba import njit, prange
 @njit
 def average_numba(c, bins):
 
-    print(33)
-
     out = np.empty(len(bins), dtype=np.float32)
     out[0] = np.mean(c[:bins[0]])
     for i in range(1, len(bins)):
@@ -976,8 +953,6 @@ def average_numba(c, bins):
 
 @njit
 def smooth_numba(c):
-
-    print(34)
 
     out = c.copy()
     if len(out) > 1:
@@ -991,8 +966,6 @@ def smooth_numba(c):
 @njit
 def decaimiento_numba(c):
 
-    print(35)
-
     idx = 0
     vmax = c[0]
     for i in range(1, c.shape[0]):
@@ -1004,8 +977,6 @@ def decaimiento_numba(c):
 
 @njit
 def sprite_calculation_numba(vals, coords):
-
-    print(36)
 
     weights = np.clip(vals, 0, np.inf)
     dxs = coords[:, 0]
@@ -1045,12 +1016,10 @@ def sprite_calculation_numba(vals, coords):
 # Function to start the application
 def start_application():
 
-    print(37)
-
     root = tk.Tk()
     init_app(root)
     root.mainloop()
 
 if __name__ == "__main__":
-    print(38)
+
     start_application()
