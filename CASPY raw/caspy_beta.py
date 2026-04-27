@@ -958,6 +958,7 @@ def init_app(root):
 
 # Animate the GIF
 def animar_gif(root, logo_label, frames, frame_index):
+    
     frame = frames[frame_index]
     logo_label.configure(image=frame)
     frame_index = (frame_index + 1) % len(frames)
@@ -3022,6 +3023,10 @@ def load_and_display_images(file_paths, parent_window, control_frame, apply_butt
                 elif fp.endswith('.b64'):
                     im = read_B64(fp,tipo='image')  # assume returns stack
                     images.append(im)
+                
+                ## save the image size in a global variable for later use in the mask
+                global image_size
+                image_size = np.array(images).shape[-1]
 
             all_stacks = np.concatenate(images, axis=0)  # combine into one big stack
             parent_window.after(0, lambda: open_image_viewer_with_nb_controls(
@@ -3035,6 +3040,8 @@ def load_and_display_images(file_paths, parent_window, control_frame, apply_butt
 
     threading.Thread(target=run, daemon=True).start()
    
+    
+
 def load_images(parent_window, control_frame, apply_button, mask_button, mask_status):
     file_paths = filedialog.askopenfilenames(
         filetypes=[("image files", "*.tiff;*.tif;*.czi;*.b64")]
@@ -3251,12 +3258,43 @@ def open_image_viewer_with_nb_controls(stack, parent_frame, control_frame, apply
     entry_B_min, entry_B_max = make_filter_row(3, "Brightness (B)")
 
     def upload_mask():
-        global mask
-        files = filedialog.askopenfilenames(filetypes=[("Matrix", "*.txt")])
-        if files:
+
+        from lfdfiles import SimfcsI64
+
+        global mask, image_size
+        files = filedialog.askopenfilenames(filetypes=[("All files", "*.*"), ("I64 files", "*.i64"), ("Text files", "*.txt")])
+
+        if files[0].endswith('.txt'):
             mask_data = np.loadtxt(files[0])
             mask = mask_data.astype(bool)
             mask_status.config(text="Mask set", fg="green")
+
+        elif files[0].endswith('.i64'):
+
+            with SimfcsI64(files[0]) as f:
+                ## data is a ndarray. In lfdfiles documentation its shown that sometimes multiple images are stored in I64 files
+                ## https://github.com/cgohlke/lfdfiles/blob/2cf7401d9d53b9245a2f4201e60e8998126816ec/lfdfiles/lfdfiles.py#L2172
+                mask_data = f.asarray() 
+
+                if image_size == 256:            
+                    mask_data = np.concatenate((mask_data[0][0::4],
+                                        mask_data[1][0::4],
+                                        mask_data[2][0::4],
+                                        mask_data[3][0::4]), axis=0)
+
+                if image_size == 128:
+                        mask_data = np.concatenate((mask_data[0][0::8],
+                                    mask_data[1][0::8],
+                                    mask_data[2][0::8],
+                                    mask_data[3][0::8],
+                                    mask_data[4][0::8],
+                                    mask_data[5][0::8],
+                                    mask_data[6][0::8],
+                                    mask_data[7][0::8]), axis=0)
+
+                mask = mask_data.astype(bool)
+                mask_status.config(text="Mask set", fg="green")
+
 
     def save_nb_results(N, B):
         pixels = int(np.sqrt(len(N)))
