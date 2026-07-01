@@ -29,6 +29,8 @@ import importlib.util
 from tifffile import imread as tif_imread
 import traceback
 import matplotlib.cm as cm
+from oiffile import OifFile
+
 
 
 # ██████  ██       ██████  ██████   █████  ██          ██    ██  █████  ██████  ██  █████  ██████  ██      ███████ ███████ 
@@ -598,7 +600,16 @@ def read_B64(Archivo, tipo='line', parent_window=None):
         reshaped_matrix = matrix.reshape((-1, pixels, pixels))
         return reshaped_matrix
 
-        
+
+def read_oib (file_path):
+    with OifFile(file_path) as oib:
+
+        for series in oib.series:
+                # print(series)
+                images = series.asarray()
+    
+    return images
+
 
 def load_correlation(cmap_var):
     global G_to_save, T_to_save
@@ -3023,7 +3034,10 @@ def load_and_display_images(file_paths, parent_window, control_frame, apply_butt
                 elif fp.endswith('.b64'):
                     im = read_B64(fp,tipo='image')  # assume returns stack
                     images.append(im)
-                
+                elif fp.endswith('.oib'):
+                    images = read_oib(fp)  # 
+                    
+
                 ## save the image size in a global variable for later use in the mask
                 global image_size
                 image_size = np.array(images).shape[-1]
@@ -3040,11 +3054,11 @@ def load_and_display_images(file_paths, parent_window, control_frame, apply_butt
 
     threading.Thread(target=run, daemon=True).start()
    
-    
+
 
 def load_images(parent_window, control_frame, apply_button, mask_button, mask_status):
     file_paths = filedialog.askopenfilenames(
-        filetypes=[("image files", "*.tiff;*.tif;*.czi;*.b64")]
+        filetypes=[("image files", "*.tiff;*.tif;*.czi;*.b64;*.oib")]
     )
 
     if file_paths:
