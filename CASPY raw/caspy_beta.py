@@ -3,7 +3,7 @@ import tkinter as tk
 import math
 from tkinter import filedialog, ttk
 from tkinter import Frame, Label, Toplevel, Entry, IntVar, messagebox
-from PIL import Image, ImageTk, ImageSequence
+from PIL import Image, ImageTk, ImageSequence, ImageDraw
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.widgets import RectangleSelector
@@ -30,6 +30,8 @@ from tifffile import imread as tif_imread
 import traceback
 import matplotlib.cm as cm
 from oiffile import OifFile
+from skimage.draw import line
+import tksheet
 
 
 
@@ -3018,11 +3020,14 @@ def toggle_kimogram():
 
 
 
-def load_and_display_images(file_paths, parent_window, control_frame, apply_button, mask_button, mask_status):
-    global images
+def load_and_display_images(file_paths, parent_window, control_frame, apply_button, mask_button, mask_status, nb_window):
+
     loading_window = show_loading_popup(parent_window)
     def run():
         try:
+            global images
+            global fp
+            
             images = []
             for fp in file_paths:
                 if fp.endswith('.czi'):
@@ -3042,6 +3047,12 @@ def load_and_display_images(file_paths, parent_window, control_frame, apply_butt
                 global image_size
                 image_size = np.array(images).shape[-1]
 
+                global last_folder, file_name
+                last_folder = os.path.basename(os.path.dirname(fp))
+                file_name = os.path.basename(fp)
+
+                nb_window.title(f"N&B Window           {fp[0:3]}.../{last_folder}/{file_name}")
+            
             all_stacks = np.concatenate(images, axis=0)  # combine into one big stack
             parent_window.after(0, lambda: open_image_viewer_with_nb_controls(
                 all_stacks,parent_window, control_frame,apply_button, mask_button, mask_status))
@@ -3054,15 +3065,16 @@ def load_and_display_images(file_paths, parent_window, control_frame, apply_butt
 
     threading.Thread(target=run, daemon=True).start()
    
+    
 
 
-def load_images(parent_window, control_frame, apply_button, mask_button, mask_status):
+def load_images(parent_window, control_frame, apply_button, mask_button, mask_status, nb_window):
     file_paths = filedialog.askopenfilenames(
         filetypes=[("image files", "*.tiff;*.tif;*.czi;*.b64;*.oib")]
     )
 
     if file_paths:
-        load_and_display_images(file_paths, parent_window,control_frame, apply_button, mask_button,mask_status)
+        load_and_display_images(file_paths, parent_window,control_frame, apply_button, mask_button,mask_status, nb_window)
     else:
         show_message('Error', "You haven't uploaded the files correctly. Try again :)")
         
@@ -3102,7 +3114,8 @@ def abrir_NB_ventana():
         control_frame,
         apply_button,
         mask_button,
-        mask_status
+        mask_status,
+        nb_window
     ),
     **button_style
 )
@@ -3112,13 +3125,351 @@ def abrir_NB_ventana():
 
     apply_button = tk.Button(control_frame, text="Apply N&B")
     apply_button.pack(side="left", padx=5)
-
-    mask_button = tk.Button(control_frame, text="Set mask")
+    
+    mask_button = tk.Button(control_frame, text="Set mask", command=lambda: open_mask_window(mask_status))
     mask_button.pack(side="left", padx=5)
     image_frame = tk.Frame(nb_window, bg=fondo)
     image_frame.grid(row=1, column=0, sticky="nsew")
     image_frame.grid_rowconfigure(0, weight=1)
     image_frame.grid_columnconfigure(0, weight=1)
+
+
+####################
+#
+#       Mask functions for N&B analysis
+#
+####################
+def open_mask_window(mask_status):
+    mask_window = tk.Toplevel()
+    mask_window.title("Mask Window")
+    mask_window.geometry("250x150")
+    mask_btn_frame = tk.Frame(mask_window, bg="white", width=250, height=200)
+    mask_btn_frame.grid(row=0, column=0, pady=5, sticky="")
+    mask_btn_frame.grid_columnconfigure(1, minsize=100)
+    
+    mask_button_1 = tk.Button(mask_btn_frame,
+                            text="Load mask from file",
+                            command=lambda: upload_mask(mask_status),
+                            **button_style,
+                            cursor='hand2')
+    mask_button_1.grid(row=0, column=0, pady=10)
+    mask_button_1.config(relief='groove')
+
+    mask_button_2 = tk.Button(mask_btn_frame,
+                        text="Open mask editor",
+                        command=lambda: mask_editor(mask_window, mask_status),
+                        **button_style,
+                        cursor='hand2')
+    mask_button_2.grid(row=1, column=0, pady=10)
+    mask_button_2.config(relief='groove')
+    
+
+def upload_mask(mask_status):
+
+        from lfdfiles import SimfcsI64
+
+        global mask, image_size
+        files = filedialog.askopenfilenames(filetypes=[("All files", "*.*"), ("I64 files", "*.i64"), ("Text files", "*.txt")])
+
+        if files[0].endswith('.txt'):
+            mask_data = np.loadtxt(files[0])
+            mask = mask_data.astype(bool)
+            mask_status.config(text="Mask set", fg="green")
+
+        elif files[0].endswith('.i64'):
+
+            with SimfcsI64(files[0]) as f:
+                ## data is a ndarray. In lfdfiles documentation its shown that sometimes multiple images are stored in I64 files
+                ## https://github.com/cgohlke/lfdfiles/blob/2cf7401d9d53b9245a2f4201e60e8998126816ec/lfdfiles/lfdfiles.py#L2172
+                mask_data = f.asarray() 
+
+                if image_size == 256:            
+                    mask_data = np.concatenate((mask_data[0][0::4],
+                                        mask_data[1][0::4],
+                                        mask_data[2][0::4],
+                                        mask_data[3][0::4]), axis=0)
+
+                if image_size == 128:
+                        mask_data = np.concatenate((mask_data[0][0::8],
+                                    mask_data[1][0::8],
+                                    mask_data[2][0::8],
+                                    mask_data[3][0::8],
+                                    mask_data[4][0::8],
+                                    mask_data[5][0::8],
+                                    mask_data[6][0::8],
+                                    mask_data[7][0::8]), axis=0)
+
+                mask = mask_data.astype(bool)
+                mask_status.config(text="Mask set", fg="green")
+
+## funcion que limita las coordenadas del mouse para que nunca se salgan del rango válido de tu imagen al generar la mascara
+def clamp(val, min_val, max_val):
+    return max(min_val, min(val, max_val))
+
+
+def mask_editor(mask_window, mask_status):
+    
+    global images, mask, image_size
+
+    mask_img = None
+
+    if len(images) == 0:
+        show_message('Error', "Please load an image first to use mask editor.")
+        mask_window.destroy()
+        return
+
+    mask_window.destroy()
+
+    # Convertir la matriz NumPy en imagen PIL con colormap
+    np_matrix = images[0][0]
+    min_val, max_val = np_matrix.min(), np_matrix.max()
+    scaled_norm = (np_matrix - min_val) / (max_val - min_val)
+    colored = (cm.viridis(scaled_norm)[:, :, :3] * 255).astype(np.uint8)
+    image = Image.fromarray(colored, mode="RGB")
+
+    # Inicializar máscara con el tamaño inicial
+    mask_matrix = np.zeros((image_size, image_size), dtype=np.uint8)
+
+    points = []
+    polygon_points = []
+    photo = None
+
+    mask_editor_frame = tk.Toplevel()
+    canvas = tk.Canvas(mask_editor_frame, width=image_size, height=image_size, bg="white")
+    canvas.pack(expand=True, fill="both")
+
+    # Mostrar la matriz como fondo
+    photo_bg = ImageTk.PhotoImage(image)
+    canvas.photo_bg = photo_bg
+    canvas.create_image(0, 0, image=photo_bg, anchor="nw")
+
+    def flood_fill(matrix, x, y):
+        h, w = matrix.shape
+        stack = [(x, y)]
+        while stack:
+            cx, cy = stack.pop()
+            if 0 <= cx < w and 0 <= cy < h:
+                if matrix[cy, cx] == 0:
+                    matrix[cy, cx] = 1
+                    stack.extend([
+                        (cx+1, cy), (cx-1, cy),
+                        (cx, cy+1), (cx, cy-1)
+                    ])
+        return matrix
+
+    def canvas_to_mask_coords(x, y, canvas_width, canvas_height, mask_size):
+        mx = int(x * mask_size / canvas_width)
+        my = int(y * mask_size / canvas_height)
+        return clamp(mx, 0, mask_size-1), clamp(my, 0, mask_size-1)
+
+    def start_draw(event):
+        nonlocal points
+        c_width = canvas.winfo_width()
+        c_height = canvas.winfo_height()
+        mx, my = canvas_to_mask_coords(event.x, event.y, c_width, c_height, image_size)
+        points = [(mx, my)]  # guardamos coordenadas en matriz fija
+
+
+
+    def draw_line(event):
+        nonlocal points, mask_matrix
+        if not points:
+            return
+
+        c_width = canvas.winfo_width()
+        c_height = canvas.winfo_height()
+        mx, my = canvas_to_mask_coords(event.x, event.y, c_width, c_height, image_size)
+
+        # dibujar visual en canvas usando coordenadas escaladas
+        prev_x, prev_y = points[-1]
+        canvas.create_line(prev_x * c_width // image_size,
+                        prev_y * c_height // image_size,
+                        mx * c_width // image_size,
+                        my * c_height // image_size,
+                        fill="black", width=2)
+
+        # actualizar matriz fija
+        rr, cc = line(prev_y, prev_x, my, mx)
+        mask_matrix[rr, cc] = 1
+
+        points.append((mx, my))
+
+
+    def end_draw(event):
+        nonlocal points, polygon_points, mask_matrix
+        if len(points) > 2:
+            c_width = canvas.winfo_width()
+            c_height = canvas.winfo_height()
+
+            # dibujar cierre en canvas
+            canvas.create_line(points[-1][0] * c_width // image_size,
+                            points[-1][1] * c_height // image_size,
+                            points[0][0] * c_width // image_size,
+                            points[0][1] * c_height // image_size,
+                            fill="black", width=2)
+
+            polygon_points = points.copy()
+
+            # actualizar matriz fija con la línea de cierre
+            rr, cc = line(points[-1][1], points[-1][0],
+                        points[0][1], points[0][0])
+            mask_matrix[rr, cc] = 1
+
+        points = []
+
+    def resize_image(event):
+        nonlocal mask_img
+        new_width, new_height = event.width, event.height
+
+        canvas.delete("all")
+
+        # Fondo escalado
+        resized_bg = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        photo_resized_bg = ImageTk.PhotoImage(resized_bg)
+        canvas.photo_bg = photo_resized_bg
+        canvas.create_image(0, 0, image=photo_resized_bg, anchor="nw")
+
+        # Visualización de la máscara SIEMPRE desde mask_matrix
+        mask_img = Image.new("RGBA", (image_size, image_size), (0,0,0,0))
+        pixels = mask_img.load()
+        for i in range(mask_img.width):
+            for j in range(mask_img.height):
+                if mask_matrix[j, i] == 1:
+                    pixels[i, j] = (255, 0, 0, 120)
+
+        mask_img_resized = mask_img.resize((new_width, new_height), Image.Resampling.NEAREST)
+        photo_resized_mask = ImageTk.PhotoImage(mask_img_resized)
+        canvas.photo_mask = photo_resized_mask
+        canvas.create_image(0, 0, image=photo_resized_mask, anchor="nw")
+
+    canvas.bind("<Configure>", resize_image)
+
+    def bucket_fill(event):
+        nonlocal mask_matrix, photo, mask_img
+        c_width = canvas.winfo_width()
+        c_height = canvas.winfo_height()
+        mx, my = canvas_to_mask_coords(event.x, event.y, c_width, c_height, image_size)
+
+        mask_matrix = flood_fill(mask_matrix, mx, my)
+
+        # generar visualización desde la matriz fija
+        mask_img = Image.new("RGBA", (image_size, image_size), (0,0,0,0))
+        pixels = mask_img.load()
+        for i in range(mask_img.width):
+            for j in range(mask_img.height):
+                if mask_matrix[j, i] == 1:
+                    pixels[i, j] = (255, 0, 0, 120)
+
+        # escalar visualización al tamaño actual del canvas
+        mask_img_resized = mask_img.resize((c_width, c_height), Image.Resampling.NEAREST)
+        photo = ImageTk.PhotoImage(mask_img_resized)
+        canvas.photo_mask = photo
+        canvas.create_image(0, 0, image=photo, anchor="nw")
+
+        canvas.unbind("<Button-1>")
+        canvas.bind("<ButtonPress-1>", start_draw)
+        canvas.bind("<B1-Motion>", draw_line)
+        canvas.bind("<ButtonRelease-1>", end_draw)
+        canvas.config(cursor="arrow")
+
+
+    def show_mask_matrix():
+        nonlocal mask_matrix
+        rows, cols = mask_matrix.shape
+
+        matrix_window = tk.Toplevel(mask_editor_frame)
+        matrix_window.title("Mask Matrix")
+
+        # Crear el widget tksheet
+        sheet = tksheet.Sheet(matrix_window,
+                            width=800,
+                            height=600,
+                            readonly=True)
+        sheet.pack(expand=True, fill="both")
+
+        # Cargar datos de la matriz
+        data = mask_matrix.tolist()
+        sheet.set_sheet_data(data)
+
+        # Configurar headers
+        sheet.headers([str(c+1) for c in range(cols)])      # columnas numeradas
+        sheet.row_index([str(r+1) for r in range(rows)])    # filas numeradas
+        sheet.set_column_widths([70] * cols)  # Ajusta el ancho de cada columna según sea necesario
+        sheet.refresh()
+
+        # Opciones de selección estilo Excel
+        sheet.enable_bindings((
+            "single_select", "row_select", "column_select",
+            "drag_select", "select_all",
+            "copy", "cut", "paste",
+            "delete", "undo", "edit_cell"
+        ))
+
+        # Spinboxes para ir a una celda
+        control_frame = tk.Frame(matrix_window)
+        control_frame.pack(fill="x", pady=5)
+
+        tk.Label(control_frame, text="Fila:").pack(side="left")
+        spin_row = tk.Spinbox(control_frame, from_=1, to=rows, width=5)
+        spin_row.pack(side="left")
+
+        tk.Label(control_frame, text="Columna:").pack(side="left")
+        spin_col = tk.Spinbox(control_frame, from_=1, to=cols, width=5)
+        spin_col.pack(side="left")
+
+        def go_to_cell():
+            r = int(spin_row.get()) - 1
+            c = int(spin_col.get()) - 1
+            sheet.see(r, c)              # centra la vista en la celda
+            sheet.select_cell(r, c)      # selecciona la celda
+
+        tk.Button(control_frame, text="Go to cell", command=go_to_cell).pack(side="left")
+
+
+
+    def apply_mask(mask_matrix):
+        global mask
+        mask = mask_matrix
+        mask_status.config(text="Mask set", fg="green")
+
+    def save_mask_to_txt(mask_matrix):
+        global file_name
+        file_name_without_extension = os.path.splitext(file_name)[0]
+        file_path = filedialog.asksaveasfilename(
+                initialfile=f'Mask - {file_name_without_extension}.txt',          # nombre sugerido sin extensión
+                defaultextension=".txt",        # fuerza extensión .txt
+                filetypes=[("Text files", "*.txt")]
+            )
+
+        if file_path:
+            np.savetxt(file_path, mask_matrix, fmt="%d", delimiter=" ")
+
+    canvas.bind("<ButtonPress-1>", start_draw)
+    canvas.bind("<B1-Motion>", draw_line)
+    canvas.bind("<ButtonRelease-1>", end_draw)
+
+    #### fill button
+    btn_bucket = tk.Button(mask_editor_frame, text="Fill", command=lambda: activate_fill())
+    btn_bucket.pack()
+    def activate_fill():
+        canvas.bind("<Button-1>", bucket_fill)
+        canvas.config(cursor="spraycan")  # cambia el puntero a un baldecito/spraycan
+
+    #### show mask matrix button
+    btn_show = tk.Button(mask_editor_frame, text="Show mask matrix", command=show_mask_matrix)
+    btn_show.pack()
+
+    #### apply mask button
+    btn_apply_mask = tk.Button(mask_editor_frame, text="Apply mask", command=lambda: apply_mask(mask_matrix))
+    btn_apply_mask.pack()
+
+
+    #### save mask button
+    btn_save_mask = tk.Button(mask_editor_frame, text="Save mask", command=lambda: save_mask_to_txt(mask_matrix))
+    btn_save_mask.pack()
+
+
+##########################################################################    
 
 def open_image_viewer_with_nb_controls(stack, parent_frame, control_frame, apply_button, mask_button, mask_status):
 
@@ -3132,7 +3483,7 @@ def open_image_viewer_with_nb_controls(stack, parent_frame, control_frame, apply
 
     # --- NUEVA ETIQUETA PARA COORDENADAS ---
     # Se coloca arriba del gráfico para que sea visible
-    coord_label = tk.Label(parent_frame, text="Mueve el mouse sobre la imagen", 
+    coord_label = tk.Label(parent_frame, text="Move the mouse over the image", 
                           font=("Consolas", 10, "bold"), bg="white", fg="blue")
     coord_label.pack(side="top", anchor="e", padx=20, pady=2)
 
@@ -3167,9 +3518,9 @@ def open_image_viewer_with_nb_controls(stack, parent_frame, control_frame, apply
                 idx = current_frame.get()
 
                 val = stack[idx, iy, ix]
-                coord_label.config(text=f"Frame {idx} | x={ix}, y={iy} | Intensidad={val:.2f}")
+                coord_label.config(text=f"Frame {idx} | x={ix}, y={iy} | Intensity={val:.2f}")
         else:
-            coord_label.config(text="Fuera de imagen")
+            coord_label.config(text="Out of bounds")
 
     # CONECTAR EL EVENTO
     canvas_obj.mpl_connect('motion_notify_event', on_mouse_move)
@@ -3327,7 +3678,7 @@ def open_image_viewer_with_nb_controls(stack, parent_frame, control_frame, apply
                  parent_frame, save_nb_results, upload_mask)
 
     apply_button.config(command=apply_nb_internal)
-    mask_button.config(command=upload_mask)
+    # mask_button.config(command=upload_mask)
 
     # =======================
     # Apply N&B
@@ -3349,9 +3700,15 @@ def apply_nb(stack, entry_start, entry_end, entry_s, entry_offset, entry_sigma,
 
     if mask is not None:
         mask_reshaped = mask.reshape(data.shape[1], data.shape[2])
+
+        # Convertir a float para permitir NaN
+        mask_reshaped = mask_reshaped.astype(float)
+        # Reemplazar ceros por NaN
+        mask_reshaped[mask_reshaped == 0] = np.nan
+
         data = data * mask_reshaped
     
-    I = np.mean(data, axis=0).ravel()
+    I = np.nanmean(data, axis=0).ravel()
     VAR = np.nanvar(data, axis=0, ddof=0).ravel()
 
     B = (VAR - sigma**2) / (S * (I - offset))
@@ -3391,11 +3748,17 @@ def apply_nb(stack, entry_start, entry_end, entry_s, entry_offset, entry_sigma,
     # =======================
     shape = stack.shape[1:]
     win = tk.Toplevel(parent_frame)
-    win.title("N&B Results")
+
+    global fp, last_folder, file_name
+
+    last_folder = os.path.basename(os.path.dirname(fp))
+    file_name = os.path.basename(fp)
+
+    win.title(f"N&B Results           {fp[0:3]}.../{last_folder}/{file_name}")
     win.configure(bg='white')
 
     # --- ETIQUETA DE COORDENADAS PARA RESULTADOS ---
-    res_info_label = tk.Label(win, text="Mueve el mouse sobre los mapas para ver valores", 
+    res_info_label = tk.Label(win, text="Move the mouse over map to see values", 
                              font=("Arial", 11, "bold"), bg="white", fg="darkblue")
     res_info_label.pack(side="top", pady=5)
 
@@ -3436,10 +3799,10 @@ def apply_nb(stack, entry_start, entry_end, entry_s, entry_offset, entry_sigma,
         if 0 <= iy < shape[0] and 0 <= ix < shape[1]:
             if event.inaxes == ax_B:
                 val = B_2D[iy, ix]
-                res_info_label.config(text=f"Mapa B | x:{ix}, y:{iy} | Valor:{val:.4f}")
+                res_info_label.config(text=f"Mapa B | x:{ix}, y:{iy} | Value:{val:.4f}")
             elif event.inaxes == ax_N:
                 val = N_2D[iy, ix]
-                res_info_label.config(text=f"Mapa N | x:{ix}, y:{iy} | Valor:{val:.4f}")
+                res_info_label.config(text=f"Mapa N | x:{ix}, y:{iy} | Value:{val:.4f}")
 
     # CONECTAR AMBOS CANVAS
     canvas_B.mpl_connect('motion_notify_event', on_move_results)
@@ -3467,13 +3830,13 @@ def apply_nb(stack, entry_start, entry_end, entry_s, entry_offset, entry_sigma,
     canvas_B.mpl_connect('motion_notify_event', on_move_results)
     canvas_N.mpl_connect('motion_notify_event', on_move_results)
 
-
     # ---- Histograms ----
     for data, title, xlabel in [
         (I, "Intensity", "I"),
         (B, f"B (mean={np.nanmean(B):.2f})", "B"),
         (N, f"N (mean={np.nanmean(N):.2f})", "N"),
     ]:
+
         fig, ax = plt.subplots(figsize=(4, 2.5))
         ax.hist(data[~np.isnan(data)], bins=30, color="slateblue")
         ax.set_title(title)
