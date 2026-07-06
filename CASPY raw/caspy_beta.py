@@ -605,6 +605,27 @@ def read_B64(Archivo, tipo='line', parent_window=None):
 
 def read_oib (file_path):
     with OifFile(file_path) as oib:
+        oib_file_name = os.path.basename(file_path)[:-4]
+        print("oib_file_name:", oib_file_name)
+        
+        oib_file_folder = os.path.dirname(file_path)
+        print("oib_file_folder:", oib_file_folder)
+
+        # ruta completa del archivo de metadatos
+        metadata_path = os.path.join(oib_file_folder, f'oib_metadata - {oib_file_name}.txt')
+
+        # chequeo correcto
+        if os.path.exists(metadata_path):
+            print("OIB metadata file already exists. No metadata file will be created.")
+        else:
+            oib_file_folder = os.path.dirname(file_path)
+            print("oib_file_folder:", oib_file_folder)
+
+            output_path = os.path.join(oib_file_folder, f'oib_metadata - {oib_file_name}.txt')
+            print(f'oib metadata file has been created in folder {oib_file_folder}')
+
+            np.savetxt(output_path, [str(oib.mainfile)], fmt="%s")
+
 
         for series in oib.series:
                 # print(series)
@@ -3207,11 +3228,15 @@ def clamp(val, min_val, max_val):
     return max(min_val, min(val, max_val))
 
 
+
 def mask_editor(mask_window, mask_status):
-    
     global images, mask, image_size
 
     mask_img = None
+    mask_matrix = np.zeros((image_size, image_size), dtype=np.uint8)
+    points = []
+    polygon_points = []
+    photo = None
 
     if len(images) == 0:
         show_message('Error', "Please load an image first to use mask editor.")
@@ -3219,29 +3244,164 @@ def mask_editor(mask_window, mask_status):
         return
 
     mask_window.destroy()
+    mask_editor_frame = tk.Toplevel()
+    mask_editor_frame.title("Mask Editor")
 
-    # Convertir la matriz NumPy en imagen PIL con colormap
+    num_images = len(images[0])   # cantidad de imágenes en la lista interna
+    from_var = tk.IntVar(value=0)
+    to_var = tk.IntVar(value=0)
+
+    # --- Frame para los Spinbox ---
+    mask_spinbox_frame = tk.Frame(mask_editor_frame)
+    mask_spinbox_frame.grid(row=0, column=0, pady=5, sticky="w")
+
+    tk.Label(mask_spinbox_frame, text="From image:").grid(row=0, column=0, padx=5, pady=2, sticky="e")
+    tk.Label(mask_spinbox_frame, text="To image:").grid(row=1, column=0, padx=5, pady=2, sticky="e")
+
+    print(image_size)
+    canvas = tk.Canvas(mask_editor_frame, width=500, height=500, bg="white")
+    canvas.grid(row=1, column=0, sticky="nsew")
+
+    # Permitir que el canvas se expanda al redimensionar la ventana
+    mask_editor_frame.grid_rowconfigure(1, weight=1)
+    mask_editor_frame.grid_columnconfigure(0, weight=1)
+    
+
+    # Mostrar directamente la primera imagen como fondo
     np_matrix = images[0][0]
     min_val, max_val = np_matrix.min(), np_matrix.max()
     scaled_norm = (np_matrix - min_val) / (max_val - min_val)
     colored = (cm.viridis(scaled_norm)[:, :, :3] * 255).astype(np.uint8)
     image = Image.fromarray(colored, mode="RGB")
 
-    # Inicializar máscara con el tamaño inicial
-    mask_matrix = np.zeros((image_size, image_size), dtype=np.uint8)
-
-    points = []
-    polygon_points = []
-    photo = None
-
-    mask_editor_frame = tk.Toplevel()
-    canvas = tk.Canvas(mask_editor_frame, width=image_size, height=image_size, bg="white")
-    canvas.pack(expand=True, fill="both")
-
-    # Mostrar la matriz como fondo
     photo_bg = ImageTk.PhotoImage(image)
     canvas.photo_bg = photo_bg
     canvas.create_image(0, 0, image=photo_bg, anchor="nw")
+
+    def update_background():
+        nonlocal image, mask_img
+
+        try:
+            f, t = from_var.get(), to_var.get()
+        except tk.TclError:
+            return
+
+        # limitar valores al rango válido
+        f = max(0, min(f, num_images-1))
+        t = max(0, min(t, num_images-1))
+
+        # asegurar que siempre se cumpla f <= t
+        if f > t:
+            t = f
+            to_var.set(t)
+
+         # caso especial: si estaban iguales y to baja, arrastro también a from
+        if t < f and f == t + 1:
+            f = t
+            from_var.set(f)
+ 
+        # Seleccionar matriz según rango
+        if f == t:
+            np_matrix = images[0][f]
+        else:
+            stack = [images[0][i] for i in range(f, t+1)]
+            np_matrix = np.mean(stack, axis=0)
+
+        # Normalizar y colorear
+        min_val, max_val = np_matrix.min(), np_matrix.max()
+        scaled_norm = (np_matrix - min_val) / (max_val - min_val)
+        colored = (cm.viridis(scaled_norm)[:, :, :3] * 255).astype(np.uint8)
+        image = Image.fromarray(colored, mode="RGB")
+
+        # Ajustar al tamaño actual del canvas
+        c_width, c_height = canvas.winfo_width(), canvas.winfo_height()
+        resized_bg = image.resize((c_width, c_height), Image.Resampling.LANCZOS)
+
+        # Actualizar canvas
+        canvas.delete("all")
+        photo_bg = ImageTk.PhotoImage(resized_bg)
+        canvas.photo_bg = photo_bg
+        canvas.create_image(0, 0, image=photo_bg, anchor="nw")
+
+
+        # Redibujar máscara si existe
+        if mask_img is not None:
+            c_width, c_height = canvas.winfo_width(), canvas.winfo_height()
+            mask_img_resized = mask_img.resize((c_width, c_height), Image.Resampling.NEAREST)
+            photo_resized_mask = ImageTk.PhotoImage(mask_img_resized)
+            canvas.photo_mask = photo_resized_mask
+            canvas.create_image(0, 0, image=photo_resized_mask, anchor="nw")
+
+
+    last_from = from_var.get()
+    last_to = to_var.get()
+    updating = False
+
+    def relation_changed(*args):
+        nonlocal last_from, last_to, updating
+        if updating:
+            return
+        updating = True
+
+        f = from_var.get()
+        t = to_var.get()
+
+        # FROM cambió
+        if f != last_from:
+            if f > last_from and last_from == last_to:
+                t = f
+            if f > t:
+                t = f
+
+        # TO cambió
+        elif t != last_to:
+            if t < last_to and last_from == last_to:
+                f = t
+            if t < f:
+                f = t
+
+        from_var.set(f)
+        to_var.set(t)
+
+        last_from = f
+        last_to = t
+        updating = False
+
+        update_background()
+
+    from_var.trace_add("write", relation_changed)
+    to_var.trace_add("write", relation_changed)
+
+
+    # Spinboxes conectados directamente a update_background
+    from_spin = tk.Spinbox(mask_spinbox_frame, from_=0, to=num_images-1,
+                           textvariable=from_var, width=5, command=update_background)
+    from_spin.grid(row=0, column=1, padx=5, pady=2)
+
+    to_spin = tk.Spinbox(mask_spinbox_frame, from_=0, to=num_images-1,
+                         textvariable=to_var, width=5, command=update_background)
+    to_spin.grid(row=1, column=1, padx=5, pady=2)
+
+    # soporte para rueda del mouse
+    def on_mousewheel(event):
+        spin = event.widget
+        if hasattr(event, "delta") and event.delta != 0:
+            if event.delta > 0:
+                spin.invoke("buttonup")
+            else:
+                spin.invoke("buttondown")
+        else:
+            if event.num == 4:
+                spin.invoke("buttonup")
+            elif event.num == 5:
+                spin.invoke("buttondown")
+        return "break"
+
+    for spin in (from_spin, to_spin):
+        spin.bind("<MouseWheel>", on_mousewheel)  # Windows/macOS
+        spin.bind("<Button-4>", on_mousewheel)    # Linux
+        spin.bind("<Button-5>", on_mousewheel)    # Linux
+
 
     def flood_fill(matrix, x, y):
         h, w = matrix.shape
@@ -3319,6 +3479,10 @@ def mask_editor(mask_window, mask_status):
 
     def resize_image(event):
         nonlocal mask_img
+
+        if image is None:
+            return  # todavía no hay imagen, no hacer nada
+
         new_width, new_height = event.width, event.height
 
         canvas.delete("all")
@@ -3409,11 +3573,11 @@ def mask_editor(mask_window, mask_status):
         control_frame = tk.Frame(matrix_window)
         control_frame.pack(fill="x", pady=5)
 
-        tk.Label(control_frame, text="Fila:").pack(side="left")
+        tk.Label(control_frame, text="Row:").pack(side="left")
         spin_row = tk.Spinbox(control_frame, from_=1, to=rows, width=5)
         spin_row.pack(side="left")
 
-        tk.Label(control_frame, text="Columna:").pack(side="left")
+        tk.Label(control_frame, text="Column:").pack(side="left")
         spin_col = tk.Spinbox(control_frame, from_=1, to=cols, width=5)
         spin_col.pack(side="left")
 
@@ -3448,25 +3612,51 @@ def mask_editor(mask_window, mask_status):
     canvas.bind("<B1-Motion>", draw_line)
     canvas.bind("<ButtonRelease-1>", end_draw)
 
+    def reset_mask():
+        nonlocal mask_matrix, mask_img, photo
+
+        # Reiniciar la matriz
+        mask_matrix = np.zeros((image_size, image_size), dtype=np.uint8)
+
+        # Borrar cualquier referencia de máscara
+        mask_img = None
+        photo = None
+
+        # Borrar todo lo dibujado en el canvas
+        canvas.delete("all")
+
+        # Redibujar el fondo actual (imagen sin máscara)
+        c_width, c_height = canvas.winfo_width(), canvas.winfo_height()
+        resized_bg = image.resize((c_width, c_height), Image.Resampling.LANCZOS)
+        photo_bg = ImageTk.PhotoImage(resized_bg)
+        canvas.photo_bg = photo_bg
+        canvas.create_image(0, 0, image=photo_bg, anchor="nw")
+
+
     #### fill button
-    btn_bucket = tk.Button(mask_editor_frame, text="Fill", command=lambda: activate_fill())
-    btn_bucket.pack()
+    btn_bucket = tk.Button(mask_spinbox_frame, text="Fill", command=lambda: activate_fill())
+    btn_bucket.grid(row=0, column=2, pady=5, sticky="ew")
+
     def activate_fill():
         canvas.bind("<Button-1>", bucket_fill)
         canvas.config(cursor="spraycan")  # cambia el puntero a un baldecito/spraycan
 
     #### show mask matrix button
-    btn_show = tk.Button(mask_editor_frame, text="Show mask matrix", command=show_mask_matrix)
-    btn_show.pack()
+    btn_show = tk.Button(mask_spinbox_frame, text="Show mask matrix", command=show_mask_matrix)
+    btn_show.grid(row=1, column=2, pady=5, sticky="ew")
 
     #### apply mask button
-    btn_apply_mask = tk.Button(mask_editor_frame, text="Apply mask", command=lambda: apply_mask(mask_matrix))
-    btn_apply_mask.pack()
+    btn_apply_mask = tk.Button(mask_spinbox_frame, text="Apply mask", command=lambda: apply_mask(mask_matrix))
+    btn_apply_mask.grid(row=0, column=3, pady=5, sticky="")
 
 
     #### save mask button
-    btn_save_mask = tk.Button(mask_editor_frame, text="Save mask", command=lambda: save_mask_to_txt(mask_matrix))
-    btn_save_mask.pack()
+    btn_save_mask = tk.Button(mask_spinbox_frame, text="Save mask", command=lambda: save_mask_to_txt(mask_matrix))
+    btn_save_mask.grid(row=1, column=3, pady=5, sticky="")
+
+    #### reset mask button
+    btn_reset_mask = tk.Button(mask_spinbox_frame, text="Reset mask", command=reset_mask)
+    btn_reset_mask.grid(row=2, column=2, pady=5, sticky="ew")
 
 
 ##########################################################################    
