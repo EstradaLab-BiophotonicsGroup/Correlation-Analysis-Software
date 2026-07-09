@@ -3,7 +3,7 @@ import tkinter as tk
 import math
 from tkinter import filedialog, ttk
 from tkinter import Frame, Label, Toplevel, Entry, IntVar, messagebox
-from PIL import Image, ImageTk, ImageSequence, ImageDraw
+from PIL import Image, ImageTk, ImageSequence, ImageDraw, ImageGrab
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.widgets import RectangleSelector
@@ -32,7 +32,8 @@ import matplotlib.cm as cm
 from oiffile import OifFile
 from skimage.draw import line
 import tksheet
-
+import win32clipboard
+import io
 
 
 # ██████  ██       ██████  ██████   █████  ██          ██    ██  █████  ██████  ██  █████  ██████  ██      ███████ ███████ 
@@ -3247,6 +3248,8 @@ def mask_editor(mask_window, mask_status):
     mask_editor_frame = tk.Toplevel()
     mask_editor_frame.title("Mask Editor")
 
+    mask_editor_frame.bind("<Control-c>", lambda e: copy_window_to_clipboard(mask_editor_frame))
+
     num_images = len(images[0])   # cantidad de imágenes en la lista interna
     from_var = tk.IntVar(value=0)
     to_var = tk.IntVar(value=0)
@@ -3659,7 +3662,27 @@ def mask_editor(mask_window, mask_status):
     btn_reset_mask.grid(row=2, column=2, pady=5, sticky="ew")
 
 
-##########################################################################    
+
+# Función genérica para copiar cualquier ventana al portapapeles
+def copy_window_to_clipboard(window):
+    x = window.winfo_rootx()
+    y = window.winfo_rooty()
+    w = window.winfo_width()
+    h = window.winfo_height()
+
+    img = ImageGrab.grab(bbox=(x, y, x + w, y + h))
+
+    output = io.BytesIO()
+    img.convert("RGB").save(output, "BMP")
+    data = output.getvalue()[14:]
+    output.close()
+
+    win32clipboard.OpenClipboard()
+    win32clipboard.EmptyClipboard()
+    win32clipboard.SetClipboardData(win32clipboard.CF_DIB, data)
+    win32clipboard.CloseClipboard()
+
+
 
 def open_image_viewer_with_nb_controls(stack, parent_frame, control_frame, apply_button, mask_button, mask_status):
 
@@ -4023,8 +4046,8 @@ def apply_nb(stack, entry_start, entry_end, entry_s, entry_offset, entry_sigma,
     # ---- Histograms ----
     for data, title, xlabel in [
         (I, "Intensity", "I"),
-        (B, f"B (mean={np.nanmean(B):.2f})", "B"),
-        (N, f"N (mean={np.nanmean(N):.2f})", "N"),
+        (B, f"B (median={np.nanmedian(B):.2f})", "B"),
+        (N, f"N (median={np.nanmedian(N):.2f})", "N"),
     ]:
 
         fig, ax = plt.subplots(figsize=(4, 2.5))
