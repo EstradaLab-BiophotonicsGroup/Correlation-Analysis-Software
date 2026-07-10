@@ -3633,6 +3633,16 @@ def mask_editor(mask_window, mask_status):
             "delete", "undo", "edit_cell"
         ))
 
+        # --- Colorear celdas según valor ---
+        for r in range(rows):
+            for c in range(cols):
+                if mask_matrix[r, c] == 1:
+                    sheet.highlight_cells(row=r, column=c, bg="#FF8383", fg="black")
+                else:
+                    sheet.highlight_cells(row=r, column=c, bg="white", fg="black")
+        sheet.refresh()
+
+        
         # Spinboxes para ir a una celda
         control_frame = tk.Frame(matrix_window)
         control_frame.pack(fill="x", pady=5)
