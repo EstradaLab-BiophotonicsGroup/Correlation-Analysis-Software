@@ -3252,16 +3252,16 @@ def mask_editor(mask_window, mask_status):
 
     num_images = len(images[0])   # cantidad de imágenes en la lista interna
     from_var = tk.IntVar(value=0)
-    to_var = tk.IntVar(value=0)
+    to_var = tk.IntVar(value=num_images-1)    # show_intensity = tk.IntVar(value=1)  # por defecto habilitado
+
 
     # --- Frame para los Spinbox ---
     mask_spinbox_frame = tk.Frame(mask_editor_frame)
     mask_spinbox_frame.grid(row=0, column=0, pady=5, sticky="w")
 
-    tk.Label(mask_spinbox_frame, text="From image:").grid(row=0, column=0, padx=5, pady=2, sticky="e")
-    tk.Label(mask_spinbox_frame, text="To image:").grid(row=1, column=0, padx=5, pady=2, sticky="e")
+    tk.Label(mask_spinbox_frame, text="From image:").grid(row=0, column=1, padx=5, pady=2, sticky="e")
+    tk.Label(mask_spinbox_frame, text="To image:").grid(row=1, column=1, padx=5, pady=2, sticky="e")
 
-    print(image_size)
     canvas = tk.Canvas(mask_editor_frame, width=500, height=500, bg="white")
     canvas.grid(row=1, column=0, sticky="nsew")
 
@@ -3270,70 +3270,78 @@ def mask_editor(mask_window, mask_status):
     mask_editor_frame.grid_columnconfigure(0, weight=1)
     
 
-    # Mostrar directamente la primera imagen como fondo
-    np_matrix = images[0][0]
-    min_val, max_val = np_matrix.min(), np_matrix.max()
-    scaled_norm = (np_matrix - min_val) / (max_val - min_val)
-    colored = (cm.viridis(scaled_norm)[:, :, :3] * 255).astype(np.uint8)
-    image = Image.fromarray(colored, mode="RGB")
+    display_mode = tk.IntVar(value=0)  # 0=Intensity, 1=B_mask, 2=N_mask
+    # update_background()
 
-    photo_bg = ImageTk.PhotoImage(image)
-    canvas.photo_bg = photo_bg
-    canvas.create_image(0, 0, image=photo_bg, anchor="nw")
+    canvas = tk.Canvas(mask_editor_frame, width=image_size, height=image_size, bg="white")
+    canvas.grid(row=1, column=0, sticky="nsew")
 
+    # Variables compartidas
+    B_mask = None
+    N_mask = None
+    I_mask = None
+
+    # --- Función para recalcular según rango ---
     def update_background():
-        nonlocal image, mask_img
+        nonlocal I_mask, B_mask, N_mask
 
-        try:
-            f, t = from_var.get(), to_var.get()
-        except tk.TclError:
+        f, t = from_var.get(), to_var.get()
+        np_matrix = images[0][f:t+1]
+
+        I_mask = np.nanmean(np_matrix, axis=0)
+        VAR_mask = np.nanvar(np_matrix, axis=0, ddof=0)
+
+        B_mask = VAR_mask / I_mask
+        N_mask = (I_mask**2) / VAR_mask
+
+        update_display_mask_editor()
+
+    # --- Función para mostrar según radiobutton ---
+    def update_display_mask_editor():
+        canvas.delete("all")
+        mode = display_mode.get()
+
+        if mode == 0 and I_mask is not None:  # Intensity
+            min_val, max_val = I_mask.min(), I_mask.max()
+            scaled_norm = (I_mask - min_val) / (max_val - min_val)
+            colored = (cm.viridis(scaled_norm)[:, :, :3] * 255).astype(np.uint8)
+            image = Image.fromarray(colored, mode="RGB")
+
+        elif mode == 1 and B_mask is not None:  # B_mask
+            min_val, max_val = B_mask.min(), B_mask.max()
+            scaled_norm = (B_mask - min_val) / (max_val - min_val)
+            colored = (cm.plasma(scaled_norm)[:, :, :3] * 255).astype(np.uint8)
+            image = Image.fromarray(colored, mode="RGB")
+
+        elif mode == 2 and N_mask is not None:  # N_mask
+            min_val, max_val = N_mask.min(), N_mask.max()
+            scaled_norm = (N_mask - min_val) / (max_val - min_val)
+            colored = (cm.inferno(scaled_norm)[:, :, :3] * 255).astype(np.uint8)
+            image = Image.fromarray(colored, mode="RGB")
+        else:
             return
 
-        # limitar valores al rango válido
-        f = max(0, min(f, num_images-1))
-        t = max(0, min(t, num_images-1))
-
-        # asegurar que siempre se cumpla f <= t
-        if f > t:
-            t = f
-            to_var.set(t)
-
-         # caso especial: si estaban iguales y to baja, arrastro también a from
-        if t < f and f == t + 1:
-            f = t
-            from_var.set(f)
- 
-        # Seleccionar matriz según rango
-        if f == t:
-            np_matrix = images[0][f]
-        else:
-            stack = [images[0][i] for i in range(f, t+1)]
-            np_matrix = np.mean(stack, axis=0)
-
-        # Normalizar y colorear
-        min_val, max_val = np_matrix.min(), np_matrix.max()
-        scaled_norm = (np_matrix - min_val) / (max_val - min_val)
-        colored = (cm.viridis(scaled_norm)[:, :, :3] * 255).astype(np.uint8)
-        image = Image.fromarray(colored, mode="RGB")
-
+        canvas.current_image = image
+        
         # Ajustar al tamaño actual del canvas
         c_width, c_height = canvas.winfo_width(), canvas.winfo_height()
         resized_bg = image.resize((c_width, c_height), Image.Resampling.LANCZOS)
 
-        # Actualizar canvas
-        canvas.delete("all")
         photo_bg = ImageTk.PhotoImage(resized_bg)
         canvas.photo_bg = photo_bg
         canvas.create_image(0, 0, image=photo_bg, anchor="nw")
 
 
-        # Redibujar máscara si existe
-        if mask_img is not None:
-            c_width, c_height = canvas.winfo_width(), canvas.winfo_height()
-            mask_img_resized = mask_img.resize((c_width, c_height), Image.Resampling.NEAREST)
-            photo_resized_mask = ImageTk.PhotoImage(mask_img_resized)
-            canvas.photo_mask = photo_resized_mask
-            canvas.create_image(0, 0, image=photo_resized_mask, anchor="nw")
+    # --- Radiobuttons exclusivos ---
+    tk.Radiobutton(mask_spinbox_frame, text="Intensity", variable=display_mode, value=0,
+                   command=update_display_mask_editor).grid(row=0, column=0, sticky="w")
+    tk.Radiobutton(mask_spinbox_frame, text="B_mask", variable=display_mode, value=1,
+                   command=update_display_mask_editor).grid(row=1, column=0, sticky="w")
+    tk.Radiobutton(mask_spinbox_frame, text="N_mask", variable=display_mode, value=2,
+                   command=update_display_mask_editor).grid(row=2, column=0, sticky="w")
+
+    # Inicializar con todo el rango
+    update_background()
 
 
     last_from = from_var.get()
@@ -3379,11 +3387,11 @@ def mask_editor(mask_window, mask_status):
     # Spinboxes conectados directamente a update_background
     from_spin = tk.Spinbox(mask_spinbox_frame, from_=0, to=num_images-1,
                            textvariable=from_var, width=5, command=update_background)
-    from_spin.grid(row=0, column=1, padx=5, pady=2)
+    from_spin.grid(row=0, column=2, padx=5, pady=2)
 
     to_spin = tk.Spinbox(mask_spinbox_frame, from_=0, to=num_images-1,
                          textvariable=to_var, width=5, command=update_background)
-    to_spin.grid(row=1, column=1, padx=5, pady=2)
+    to_spin.grid(row=1, column=2, padx=5, pady=2)
 
     # soporte para rueda del mouse
     def on_mousewheel(event):
@@ -3483,21 +3491,22 @@ def mask_editor(mask_window, mask_status):
     def resize_image(event):
         nonlocal mask_img
 
-        if image is None:
-            return  # todavía no hay imagen, no hacer nada
+        # Si todavía no hay imagen cargada en el canvas, no hacer nada
+        if not hasattr(canvas, "current_image"):
+            return
 
         new_width, new_height = event.width, event.height
 
         canvas.delete("all")
 
-        # Fondo escalado
-        resized_bg = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        # Fondo escalado desde la última imagen guardada
+        resized_bg = canvas.current_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
         photo_resized_bg = ImageTk.PhotoImage(resized_bg)
         canvas.photo_bg = photo_resized_bg
         canvas.create_image(0, 0, image=photo_resized_bg, anchor="nw")
 
         # Visualización de la máscara SIEMPRE desde mask_matrix
-        mask_img = Image.new("RGBA", (image_size, image_size), (0,0,0,0))
+        mask_img = Image.new("RGBA", (image_size, image_size), (0, 0, 0, 0))
         pixels = mask_img.load()
         for i in range(mask_img.width):
             for j in range(mask_img.height):
@@ -3509,7 +3518,9 @@ def mask_editor(mask_window, mask_status):
         canvas.photo_mask = photo_resized_mask
         canvas.create_image(0, 0, image=photo_resized_mask, anchor="nw")
 
+    # Vincular al evento de redimensionamiento
     canvas.bind("<Configure>", resize_image)
+
 
     def bucket_fill(event):
         nonlocal mask_matrix, photo, mask_img
@@ -3629,16 +3640,17 @@ def mask_editor(mask_window, mask_status):
         canvas.delete("all")
 
         # Redibujar el fondo actual (imagen sin máscara)
-        c_width, c_height = canvas.winfo_width(), canvas.winfo_height()
-        resized_bg = image.resize((c_width, c_height), Image.Resampling.LANCZOS)
-        photo_bg = ImageTk.PhotoImage(resized_bg)
-        canvas.photo_bg = photo_bg
-        canvas.create_image(0, 0, image=photo_bg, anchor="nw")
+        if hasattr(canvas, "current_image"):
+            c_width, c_height = canvas.winfo_width(), canvas.winfo_height()
+            resized_bg = canvas.current_image.resize((c_width, c_height), Image.Resampling.LANCZOS)
+            photo_bg = ImageTk.PhotoImage(resized_bg)
+            canvas.photo_bg = photo_bg
+            canvas.create_image(0, 0, image=photo_bg, anchor="nw")
 
 
     #### fill button
     btn_bucket = tk.Button(mask_spinbox_frame, text="Fill", command=lambda: activate_fill())
-    btn_bucket.grid(row=0, column=2, pady=5, sticky="ew")
+    btn_bucket.grid(row=0, column=3, pady=5, sticky="ew")
 
     def activate_fill():
         canvas.bind("<Button-1>", bucket_fill)
@@ -3646,20 +3658,20 @@ def mask_editor(mask_window, mask_status):
 
     #### show mask matrix button
     btn_show = tk.Button(mask_spinbox_frame, text="Show mask matrix", command=show_mask_matrix)
-    btn_show.grid(row=1, column=2, pady=5, sticky="ew")
+    btn_show.grid(row=1, column=3, pady=5, sticky="ew")
 
     #### apply mask button
     btn_apply_mask = tk.Button(mask_spinbox_frame, text="Apply mask", command=lambda: apply_mask(mask_matrix))
-    btn_apply_mask.grid(row=0, column=3, pady=5, sticky="")
+    btn_apply_mask.grid(row=0, column=4, pady=5, sticky="")
 
 
     #### save mask button
     btn_save_mask = tk.Button(mask_spinbox_frame, text="Save mask", command=lambda: save_mask_to_txt(mask_matrix))
-    btn_save_mask.grid(row=1, column=3, pady=5, sticky="")
+    btn_save_mask.grid(row=1, column=4, pady=5, sticky="")
 
     #### reset mask button
     btn_reset_mask = tk.Button(mask_spinbox_frame, text="Reset mask", command=reset_mask)
-    btn_reset_mask.grid(row=2, column=2, pady=5, sticky="ew")
+    btn_reset_mask.grid(row=2, column=3, pady=5, sticky="ew")
 
 
 
