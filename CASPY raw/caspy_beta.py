@@ -3599,6 +3599,8 @@ def mask_editor(mask_window, mask_status):
         canvas.bind("<B1-Motion>", draw_line)
         canvas.bind("<ButtonRelease-1>", end_draw)
         canvas.config(cursor="arrow")
+        btn_bucket.config(relief="raised")
+
 
 
     def show_mask_matrix():
@@ -3713,6 +3715,7 @@ def mask_editor(mask_window, mask_status):
     btn_bucket.grid(row=0, column=3, pady=5, sticky="ew")
 
     def activate_fill():
+        btn_bucket.config(relief="sunken")
         canvas.bind("<Button-1>", bucket_fill)
         canvas.config(cursor="spraycan")  # cambia el puntero a un baldecito/spraycan
 
