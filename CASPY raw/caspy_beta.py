@@ -3291,8 +3291,9 @@ def mask_editor(mask_window, mask_status):
         I_mask = np.nanmean(np_matrix, axis=0)
         VAR_mask = np.nanvar(np_matrix, axis=0, ddof=0)
 
-        B_mask = VAR_mask / I_mask
-        N_mask = (I_mask**2) / VAR_mask
+        B_mask = np.divide(VAR_mask, I_mask, out=np.zeros_like(VAR_mask), where=I_mask!=0)
+        N_mask = np.divide(I_mask**2, VAR_mask, out=np.zeros_like(I_mask), where=VAR_mask!=0)
+
 
         update_display_mask_editor()
 
@@ -3310,13 +3311,13 @@ def mask_editor(mask_window, mask_status):
         elif mode == 1 and B_mask is not None:  # B_mask
             min_val, max_val = B_mask.min(), B_mask.max()
             scaled_norm = (B_mask - min_val) / (max_val - min_val)
-            colored = (cm.plasma(scaled_norm)[:, :, :3] * 255).astype(np.uint8)
+            colored = (cm.viridis(scaled_norm)[:, :, :3] * 255).astype(np.uint8)
             image = Image.fromarray(colored, mode="RGB")
 
         elif mode == 2 and N_mask is not None:  # N_mask
             min_val, max_val = N_mask.min(), N_mask.max()
             scaled_norm = (N_mask - min_val) / (max_val - min_val)
-            colored = (cm.inferno(scaled_norm)[:, :, :3] * 255).astype(np.uint8)
+            colored = (cm.viridis(scaled_norm)[:, :, :3] * 255).astype(np.uint8)
             image = Image.fromarray(colored, mode="RGB")
         else:
             return
@@ -3331,14 +3332,27 @@ def mask_editor(mask_window, mask_status):
         canvas.photo_bg = photo_bg
         canvas.create_image(0, 0, image=photo_bg, anchor="nw")
 
+        mask_img = Image.new("RGBA", (image_size, image_size), (0, 0, 0, 0))
+        pixels = mask_img.load()
+        for i in range(mask_img.width):
+            for j in range(mask_img.height):
+                if mask_matrix[j, i] == 1:
+                    pixels[i, j] = (255, 0, 0, 120)
+
+        mask_img_resized = mask_img.resize((c_width, c_height), Image.Resampling.NEAREST)
+        photo_mask = ImageTk.PhotoImage(mask_img_resized)
+        canvas.photo_mask = photo_mask
+        canvas.create_image(0, 0, image=photo_mask, anchor="nw")
 
     # --- Radiobuttons exclusivos ---
-    tk.Radiobutton(mask_spinbox_frame, text="Intensity", variable=display_mode, value=0,
-                   command=update_display_mask_editor).grid(row=0, column=0, sticky="w")
-    tk.Radiobutton(mask_spinbox_frame, text="B_mask", variable=display_mode, value=1,
-                   command=update_display_mask_editor).grid(row=1, column=0, sticky="w")
-    tk.Radiobutton(mask_spinbox_frame, text="N_mask", variable=display_mode, value=2,
-                   command=update_display_mask_editor).grid(row=2, column=0, sticky="w")
+    rb_intensity = tk.Radiobutton(mask_spinbox_frame, text="Intensity", variable=display_mode, value=0, command=update_display_mask_editor)
+    rb_B = tk.Radiobutton(mask_spinbox_frame, text="B mask", variable=display_mode, value=1, command=update_display_mask_editor)
+    rb_N = tk.Radiobutton(mask_spinbox_frame, text="N mask", variable=display_mode, value=2, command=update_display_mask_editor)
+
+    rb_intensity.grid(row=0, column=0, padx=5, pady=2, sticky="w")
+    rb_B.grid(row=1, column=0, padx=5, pady=2, sticky="w")
+    rb_N.grid(row=2, column=0, padx=5, pady=2, sticky="w")
+
 
     # Inicializar con todo el rango
     update_background()
@@ -3348,15 +3362,28 @@ def mask_editor(mask_window, mask_status):
     last_to = to_var.get()
     updating = False
 
-    def relation_changed(*args):
+    def relation_changed(widget_from, widget_to, *args):
         nonlocal last_from, last_to, updating
         if updating:
             return
         updating = True
 
-        f = from_var.get()
-        t = to_var.get()
+        f_text = widget_from.get()
+        t_text = widget_to.get()
 
+        if f_text == "" or t_text == "":
+            return
+
+        f = int(f_text)
+        t = int(t_text)
+
+        total = len(images[0])
+
+        if f > total-1:
+            f = total-1
+            from_var.set(f)
+
+        # --- lógica de arrastre original ---
         # FROM cambió
         if f != last_from:
             if f > last_from and last_from == last_to:
@@ -3371,27 +3398,50 @@ def mask_editor(mask_window, mask_status):
             if t < f:
                 f = t
 
+        # --- validaciones adicionales ---
+        if t < f:
+            t = f
+            to_var.set(t)
+
+        if t - f > 0:
+            rb_B.config(state="normal")
+            rb_N.config(state="normal")
+        else:
+            rb_B.config(state="disabled")
+            rb_N.config(state="disabled")
+            display_mode.set(0)
+
         from_var.set(f)
         to_var.set(t)
 
+        # actualizar valores previos
         last_from = f
         last_to = t
+
+        
         updating = False
 
         update_background()
 
-    from_var.trace_add("write", relation_changed)
-    to_var.trace_add("write", relation_changed)
 
 
     # Spinboxes conectados directamente a update_background
     from_spin = tk.Spinbox(mask_spinbox_frame, from_=0, to=num_images-1,
-                           textvariable=from_var, width=5, command=update_background)
+                       textvariable=from_var, width=5)
     from_spin.grid(row=0, column=2, padx=5, pady=2)
 
     to_spin = tk.Spinbox(mask_spinbox_frame, from_=0, to=num_images-1,
-                         textvariable=to_var, width=5, command=update_background)
+                        textvariable=to_var, width=5)
     to_spin.grid(row=1, column=2, padx=5, pady=2)
+
+    # Ahora que existen, les asignamos el command
+    from_spin.config(command=lambda: relation_changed(from_spin, to_spin))
+    to_spin.config(command=lambda: relation_changed(from_spin, to_spin))
+
+    # Y también el bind para Enter
+    from_spin.bind("<Return>", lambda e: relation_changed(from_spin, to_spin))
+    to_spin.bind("<Return>", lambda e: relation_changed(from_spin, to_spin))
+
 
     # soporte para rueda del mouse
     def on_mousewheel(event):
@@ -3936,8 +3986,28 @@ def apply_nb(stack, entry_start, entry_end, entry_s, entry_offset, entry_sigma,
     I = np.nanmean(data, axis=0).ravel()
     VAR = np.nanvar(data, axis=0, ddof=0).ravel()
 
-    B = (VAR - sigma**2) / (S * (I - offset))
-    N = (I - offset)**2 / (VAR - sigma**2)
+    # B = (VAR - sigma**2) / (S * (I - offset))
+    # N = (I - offset)**2 / (VAR - sigma**2)
+
+    # Inicializamos B y N con NaN
+    B = np.full_like(I, np.nan, dtype=float)
+    N = np.full_like(I, np.nan, dtype=float)
+
+    # Condiciones inválidas → NaN
+    invalid = np.isnan(I) | np.isnan(VAR)
+
+    # Condiciones de división por cero → valores fijos
+    zero_cond = (I == 0) | (I - offset == 0) | (VAR == sigma**2) | (VAR - sigma**2 - S*(I - offset) == 0)
+
+    # Caso válido → cálculo normal
+    valid = ~invalid & ~zero_cond
+
+    # Asignaciones vectorizadas
+    B[zero_cond] = 1
+    N[zero_cond] = 0
+
+    B[valid] = (VAR[valid] - sigma**2) / (S * (I[valid] - offset))
+    N[valid] = ((I[valid] - offset)**2) / (VAR[valid] - sigma**2)
 
     # for k in range(0,len(I)):
     #     if math.isnan(I[k]) or math.isnan(VAR[k]):
